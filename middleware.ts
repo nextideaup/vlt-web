@@ -52,7 +52,9 @@ export async function middleware(req: NextRequest) {
 // - api/pursuits/run-search + api/mgmt: separate auth (cron secret / mgmt token).
 // - api/marketplace/ebay/account-deletion: eBay calls it unauthenticated; the
 //   route validates via the shared verification-token hash.
+// - api/verifier: the verifier door (VLT-36) — its caller has no session yet;
+//   the route refuses in production and checks its own secret.
 // - _next/static, _next/image, favicon, uploads: static assets.
 export const config = {
-  matcher: ["/((?!login|register|privacy|api/auth|api/status|api/aasa|\\.well-known|api/pursuits/run-search|api/mgmt|api/marketplace/ebay/account-deletion|api/upload|api/data/import|_next/static|_next/image|favicon\\.ico|uploads).*)"],
+  matcher: ["/((?!login|register|privacy|api/auth|api/status|api/aasa|\\.well-known|api/pursuits/run-search|api/mgmt|api/marketplace/ebay/account-deletion|api/verifier|api/upload|api/data/import|_next/static|_next/image|favicon\\.ico|uploads).*)"],
 };
