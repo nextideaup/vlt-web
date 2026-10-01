@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { itemHref } from "@/lib/itemRoutes";
 import {
   WatchItem,
   WatchCategory,
@@ -11,7 +13,6 @@ import {
 import WatchCard from "@/components/WatchCard";
 import WatchListView from "@/components/WatchListView";
 import AddWatchModal from "@/components/AddWatchModal";
-import WatchDetailModal from "@/components/WatchDetailModal";
 import WatchValuationPromptModal from "@/components/WatchValuationPromptModal";
 import WatchCSVImportModal from "@/components/WatchCSVImportModal";
 import BulkActionBar from "@/components/BulkActionBar";
@@ -37,7 +38,6 @@ export default function WatchCategoryPage() {
   const [items, setItems] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<WatchItem | null>(null);
   const [valuationItem, setValuationItem] = useState<WatchItem | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -133,8 +133,7 @@ export default function WatchCategoryPage() {
 
   const handleItemDeleted = useCallback((id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
-    if (selectedItem?.id === id) setSelectedItem(null);
-  }, [selectedItem]);
+  }, []);
 
   const handleValuationComplete = useCallback((price: number) => {
     if (!valuationItem) return;
@@ -147,33 +146,7 @@ export default function WatchCategoryPage() {
     );
   }, [valuationItem]);
 
-  const handleItemUpdated = useCallback((updated: WatchItem) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === updated.id
-          ? {
-              ...updated,
-              latest_ai_price: item.latest_ai_price,
-              latest_ai_price_date: item.latest_ai_price_date,
-              latest_user_price: item.latest_user_price,
-              latest_user_price_date: item.latest_user_price_date,
-            }
-          : item
-      )
-    );
-    setSelectedItem(updated);
-  }, []);
 
-  const handleDetailValuation = useCallback((price: number, type: "ai" | "user") => {
-    if (!selectedItem) return;
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== selectedItem.id) return item;
-        if (type === "ai") return { ...item, latest_ai_price: price, latest_ai_price_date: new Date().toISOString() };
-        return { ...item, latest_user_price: price, latest_user_price_date: new Date().toISOString() };
-      })
-    );
-  }, [selectedItem]);
 
   const pendingRevalue = useMemo(() => items.filter(needsRevalue).length, [items]);
 
@@ -228,7 +201,7 @@ export default function WatchCategoryPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
-            <span>Watches</span>
+            <Link href="/watches" className="hover:text-accent transition-colors">Watches</Link>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
@@ -357,7 +330,7 @@ export default function WatchCategoryPage() {
             <WatchCard
               key={item.id}
               item={item}
-              onClick={() => setSelectedItem(item)}
+              href={itemHref("watches", item.id)}
               onDelete={handleItemDeleted}
               isSelected={selectedIds.has(item.id)}
               onSelectChange={toggleSelect}
@@ -367,7 +340,7 @@ export default function WatchCategoryPage() {
       ) : (
         <WatchListView
           items={sortedItems}
-          onItemClick={(item) => setSelectedItem(item)}
+          itemHref={(item) => itemHref("watches", item.id)}
           onDelete={handleItemDeleted}
           selectedIds={selectedIds}
           onSelectChange={toggleSelect}
@@ -406,16 +379,6 @@ export default function WatchCategoryPage() {
           defaultCategory={category}
           onClose={() => setShowAddModal(false)}
           onItemAdded={handleItemAdded}
-        />
-      )}
-
-      {selectedItem && (
-        <WatchDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleItemDeleted}
-          onValuationSaved={handleDetailValuation}
-          onItemUpdated={handleItemUpdated}
         />
       )}
 

@@ -4,6 +4,8 @@ import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { itemHref } from "@/lib/itemRoutes";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import {
   AutoItem,
   AutoCategory,
@@ -11,7 +13,6 @@ import {
   AUTO_CATEGORY_LABELS,
   CONDITION_COLORS,
 } from "@/lib/types";
-import AutomobileDetailModal from "@/components/AutomobileDetailModal";
 import SortableHeader from "@/components/forms/SortableHeader";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
@@ -48,8 +49,8 @@ export default function AutomobilesPage() {
   const { hideValues } = useHideValues();
   const fmt = (n: number | null | undefined) => hideValues ? "$•••" : fmtRaw(n);
   const [allItems, setAllItems] = useState<AutoItem[]>([]);
+  const openRow = useRowLink();
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<AutoItem | null>(null);
   const [pages, setPages] = useState<Record<AutoCategory, number>>({
     collection: 0,
     household: 0,
@@ -103,17 +104,7 @@ export default function AutomobilesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleItemDeleted = useCallback((id: string) => {
-    setAllItems((prev) => prev.filter((item) => item.id !== id));
-    setSelectedItem(null);
-  }, []);
 
-  const handleItemUpdated = useCallback((updated: AutoItem) => {
-    setAllItems((prev) =>
-      prev.map((item) => item.id === updated.id ? { ...item, ...updated } : item)
-    );
-    setSelectedItem((prev) => (prev?.id === updated.id ? updated : prev));
-  }, []);
 
   const totalItems = allItems.length;
 
@@ -198,14 +189,14 @@ export default function AutomobilesPage() {
                         pageItems.map((item, idx) => (
                           <tr
                             key={item.id}
-                            onClick={() => setSelectedItem(item)}
+                            onClick={(e) => openRow(e, itemHref("automobiles", item.id))}
                             className={`cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                               idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                             }`}
                           >
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.year ?? "—"}</td>
                             <td className="px-4 py-3 text-text font-medium whitespace-nowrap">{item.brand}</td>
-                            <td className="px-4 py-3 text-text whitespace-nowrap">{item.model}</td>
+                            <td className="px-4 py-3 text-text whitespace-nowrap"><Link href={itemHref("automobiles", item.id)} className="hover:text-accent hover:underline underline-offset-2">{item.model}</Link></td>
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.trim_level || "—"}</td>
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.body_style || "—"}</td>
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.engine || "—"}</td>
@@ -290,15 +281,6 @@ export default function AutomobilesPage() {
             );
           })}
         </div>
-      )}
-
-      {selectedItem && (
-        <AutomobileDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleItemDeleted}
-          onItemUpdated={handleItemUpdated}
-        />
       )}
     </div>
   );

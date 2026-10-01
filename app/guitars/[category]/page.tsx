@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { itemHref } from "@/lib/itemRoutes";
 import {
   GuitarItem,
   GuitarCategory,
@@ -11,7 +13,6 @@ import {
 import GuitarCard from "@/components/GuitarCard";
 import GuitarListView from "@/components/GuitarListView";
 import AddItemModal from "@/components/AddItemModal";
-import ItemDetailModal from "@/components/ItemDetailModal";
 import ValuationPromptModal from "@/components/ValuationPromptModal";
 import CSVImportModal from "@/components/CSVImportModal";
 import BulkActionBar from "@/components/BulkActionBar";
@@ -40,7 +41,6 @@ export default function CategoryPage() {
   const [items, setItems] = useState<GuitarItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<GuitarItem | null>(null);
   const [valuationItem, setValuationItem] = useState<GuitarItem | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -144,8 +144,7 @@ export default function CategoryPage() {
 
   const handleItemDeleted = useCallback((id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
-    if (selectedItem?.id === id) setSelectedItem(null);
-  }, [selectedItem]);
+  }, []);
 
   const handleValuationComplete = useCallback((price: number) => {
     if (!valuationItem) return;
@@ -158,33 +157,7 @@ export default function CategoryPage() {
     );
   }, [valuationItem]);
 
-  const handleItemUpdated = useCallback((updated: GuitarItem) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === updated.id
-          ? {
-              ...updated,
-              latest_ai_price: item.latest_ai_price,
-              latest_ai_price_date: item.latest_ai_price_date,
-              latest_user_price: item.latest_user_price,
-              latest_user_price_date: item.latest_user_price_date,
-            }
-          : item
-      )
-    );
-    setSelectedItem(updated);
-  }, []);
 
-  const handleDetailValuation = useCallback((price: number, type: "ai" | "user") => {
-    if (!selectedItem) return;
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== selectedItem.id) return item;
-        if (type === "ai") return { ...item, latest_ai_price: price, latest_ai_price_date: new Date().toISOString() };
-        return { ...item, latest_user_price: price, latest_user_price_date: new Date().toISOString() };
-      })
-    );
-  }, [selectedItem]);
 
   const pendingRevalue = useMemo(() => items.filter(needsRevalue).length, [items]);
 
@@ -242,7 +215,7 @@ export default function CategoryPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 text-text-muted text-sm mb-1">
-            <span>Guitars</span>
+            <Link href="/guitars" className="hover:text-accent transition-colors">Guitars</Link>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
@@ -371,7 +344,7 @@ export default function CategoryPage() {
             <GuitarCard
               key={item.id}
               item={item}
-              onClick={() => setSelectedItem(item)}
+              href={itemHref("guitars", item.id)}
               onDelete={handleItemDeleted}
               isSelected={selectedIds.has(item.id)}
               onSelectChange={toggleSelect}
@@ -381,7 +354,7 @@ export default function CategoryPage() {
       ) : (
         <GuitarListView
           items={sortedItems}
-          onItemClick={(item) => setSelectedItem(item)}
+          itemHref={(item) => itemHref("guitars", item.id)}
           onDelete={handleItemDeleted}
           selectedIds={selectedIds}
           onSelectChange={toggleSelect}
@@ -425,16 +398,6 @@ export default function CategoryPage() {
           defaultCategory={category}
           onClose={() => setShowAddModal(false)}
           onItemAdded={handleItemAdded}
-        />
-      )}
-
-      {selectedItem && (
-        <ItemDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleItemDeleted}
-          onValuationSaved={handleDetailValuation}
-          onItemUpdated={handleItemUpdated}
         />
       )}
 

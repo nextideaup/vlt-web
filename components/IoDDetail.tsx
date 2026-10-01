@@ -1,28 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AutoItem, AutoImage, ComparableSale, CONDITION_COLORS, AUTO_CATEGORY_LABELS } from "@/lib/types";
+import { IoDItem, IoDImage, ComparableSale, CONDITION_COLORS, IOD_CATEGORY_LABELS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
-import EditAutomobileModal from "@/components/EditAutomobileModal";
+import EditIoDModal from "@/components/EditIoDModal";
 import InsuranceValueRow from "@/components/InsuranceValueRow";
 import SpecsSection from "@/components/forms/SpecsSection";
 import ListForSaleSection from "@/components/ListForSaleSection";
-import { autoConfig } from "@/lib/collections/auto";
+import { iodConfig } from "@/lib/collections/iod";
 import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
-interface AutomobileDetailModalProps {
-  item: AutoItem;
-  onClose: () => void;
+interface IoDDetailProps {
+  item: IoDItem;
   onDelete: (id: string) => void;
   onValuationSaved?: (price: number, type: "ai" | "user") => void;
-  onItemUpdated?: (item: AutoItem) => void;
+  onItemUpdated?: (item: IoDItem) => void;
 }
 
 type ValuationStep = "idle" | "loading" | "results" | "error" | "manual";
 
-interface AutoValuation {
+interface IoDValuation {
   id: string;
-  auto_id: string;
+  iod_id: string;
   valuation_type: "ai" | "user";
   price: number;
   notes: string | null;
@@ -43,23 +42,17 @@ const fmtRaw = (v: number | null | undefined) => {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(Number(v));
 };
 
-const fmtMileage = (m: number | null | undefined) => {
-  if (m == null) return "—";
-  return Number(m).toLocaleString("en-US") + " miles";
-};
-
 const fmtDate = (d: string | null | undefined) => {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-export default function AutomobileDetailModal({
+export default function IoDDetail({
   item,
-  onClose,
   onDelete,
   onValuationSaved,
   onItemUpdated,
-}: AutomobileDetailModalProps) {
+}: IoDDetailProps) {
   const { hideValues } = useHideValues();
   const confirmDialog = useConfirm();
   const fmt = (v: number | null | undefined) => hideValues ? "$•••" : fmtRaw(v);
@@ -70,7 +63,7 @@ export default function AutomobileDetailModal({
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  const [valuations, setValuations] = useState<AutoValuation[]>([]);
+  const [valuations, setValuations] = useState<IoDValuation[]>([]);
   const [valuationsLoaded, setValuationsLoaded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [valuationStep, setValuationStep] = useState<ValuationStep>("idle");
@@ -80,7 +73,7 @@ export default function AutomobileDetailModal({
   const [manualNotes, setManualNotes] = useState("");
   const [savingManual, setSavingManual] = useState(false);
 
-  const images: AutoImage[] = item.images ?? [];
+  const images: IoDImage[] = item.images ?? [];
   const activeImage = images[activeImageIndex];
 
   const openLightbox = (index: number) => {
@@ -110,7 +103,7 @@ export default function AutomobileDetailModal({
   useEffect(() => {
     async function loadValuations() {
       try {
-        const res = await fetch(`/api/automobiles/${item.id}/valuations`);
+        const res = await fetch(`/api/iod/${item.id}/valuations`);
         if (res.ok) {
           const data = await res.json();
           setValuations(data);
@@ -128,14 +121,12 @@ export default function AutomobileDetailModal({
   const latestUser = valuations.find((v) => v.valuation_type === "user");
 
   const handleDelete = async () => {
-    const title = [item.year, item.brand, item.model].filter(Boolean).join(" ");
-    if (!(await confirmDialog(permanentDeleteOptions(`"${title}"`)))) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${item.short_description}"`)))) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/automobiles/${item.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/iod/${item.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       onDelete(item.id);
-      onClose();
     } catch (err) {
       console.error(err);
       alert("Failed to delete item.");
@@ -147,7 +138,7 @@ export default function AutomobileDetailModal({
     setValuationStep("loading");
     setAiError("");
     try {
-      const res = await fetch(`/api/automobiles/${item.id}/value`, { method: "POST" });
+      const res = await fetch(`/api/iod/${item.id}/value`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Valuation failed");
@@ -168,13 +159,13 @@ export default function AutomobileDetailModal({
     if (!manualPrice || isNaN(price) || price <= 0) return;
     setSavingManual(true);
     try {
-      const res = await fetch(`/api/automobiles/${item.id}/valuations`, {
+      const res = await fetch(`/api/iod/${item.id}/valuations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ price, notes: manualNotes || null }),
       });
       if (!res.ok) throw new Error("Failed to save");
-      const saved: AutoValuation = await res.json();
+      const saved: IoDValuation = await res.json();
       setValuations((prev) => [saved, ...prev]);
       setValuationStep("idle");
       setManualPrice("");
@@ -188,26 +179,19 @@ export default function AutomobileDetailModal({
     }
   };
 
-  const title = [item.year, item.brand, item.model].filter(Boolean).join(" ");
-
   return (
     <>
-      <div
-        className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ backgroundColor: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
-        onClick={onClose}
+      <section
+          className="bg-surface border border-border rounded-2xl w-full"
+          aria-labelledby="item-detail-title"
       >
-        <div
-          className="modal-content bg-surface border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-surface z-10">
             <div>
               <p className="text-xs text-text-dim uppercase tracking-widest mb-0.5">
-                {AUTO_CATEGORY_LABELS[item.category]}
+                {IOD_CATEGORY_LABELS[item.category]}
               </p>
-              <h2 className="text-lg font-bold text-text">{title}</h2>
+              <h1 id="item-detail-title" className="text-lg font-bold text-text leading-snug max-w-[480px]">{item.short_description}</h1>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -226,15 +210,6 @@ export default function AutomobileDetailModal({
               >
                 {deleting ? "Deleting..." : "Delete"}
               </button>
-              <button
-                aria-label="Close"
-                onClick={onClose}
-                className="w-9 h-9 rounded-xl hover:bg-surface-3 text-text-muted hover:text-text transition-colors flex items-center justify-center"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
           </div>
 
@@ -251,14 +226,14 @@ export default function AutomobileDetailModal({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={activeImage?.path}
-                        alt={title}
+                        alt={item.short_description}
                         className="w-full h-full object-cover"
                         onError={() => setImgErrors((prev) => ({ ...prev, [activeImageIndex]: true }))}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center image-placeholder">
                         <svg className="w-12 h-12 text-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16l2-6h14l2 6M1 16h22M5 16v2M19 16v2M8 10h8" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 2l3 7h6l-5 4 2 7-6-4-6 4 2-7-5-4h6z" />
                         </svg>
                       </div>
                     )}
@@ -283,7 +258,7 @@ export default function AutomobileDetailModal({
               ) : (
                 <div className="aspect-[4/3] bg-surface-2 rounded-xl flex items-center justify-center image-placeholder">
                   <svg className="w-16 h-16 text-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16l2-6h14l2 6M1 16h22M5 16v2M19 16v2M8 10h8" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2l3 7h6l-5 4 2 7-6-4-6 4 2-7-5-4h6z" />
                   </svg>
                 </div>
               )}
@@ -313,46 +288,22 @@ export default function AutomobileDetailModal({
 
               {/* Core details */}
               <div className="bg-surface-2 rounded-xl p-4 border border-border space-y-2.5">
-                {item.trim_level && (
+                {item.brand && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Trim</span>
-                    <span className="text-text font-medium">{item.trim_level}</span>
+                    <span className="text-text-muted">Brand / Artist</span>
+                    <span className="text-text font-medium">{item.brand}</span>
                   </div>
                 )}
-                {item.body_style && (
+                {item.item_type && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Body Style</span>
-                    <span className="text-text">{item.body_style}</span>
+                    <span className="text-text-muted">Item Type</span>
+                    <span className="text-text">{item.item_type}</span>
                   </div>
                 )}
-                {item.engine && (
+                {item.year != null && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Engine</span>
-                    <span className="text-text">{item.engine}</span>
-                  </div>
-                )}
-                {item.transmission && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Transmission</span>
-                    <span className="text-text">{item.transmission}</span>
-                  </div>
-                )}
-                {item.color && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Color</span>
-                    <span className="text-text">{item.color}</span>
-                  </div>
-                )}
-                {item.mileage != null && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Mileage</span>
-                    <span className="text-text font-mono">{fmtMileage(item.mileage)}</span>
-                  </div>
-                )}
-                {item.vin && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">VIN</span>
-                    <span className="text-text font-mono text-xs">{item.vin}</span>
+                    <span className="text-text-muted">Year</span>
+                    <span className="text-text">{item.year}</span>
                   </div>
                 )}
                 {item.purchase_price != null && (
@@ -375,9 +326,17 @@ export default function AutomobileDetailModal({
                 )}
               </div>
 
-              {item.description && (
-                <p className="text-sm text-text-muted leading-relaxed">{item.description}</p>
+              {item.long_description && (
+                <p className="text-sm text-text-muted leading-relaxed">{item.long_description}</p>
               )}
+
+              {item.provenance && (
+                <div className="bg-surface-2 rounded-xl p-3 border border-border">
+                  <p className="text-xs text-text-dim uppercase tracking-wider mb-1">Provenance</p>
+                  <p className="text-sm text-text leading-relaxed">{item.provenance}</p>
+                </div>
+              )}
+
               {item.notes && (
                 <div className="bg-surface-2 rounded-xl p-3 border border-border">
                   <p className="text-xs text-text-dim uppercase tracking-wider mb-1">Notes</p>
@@ -388,13 +347,13 @@ export default function AutomobileDetailModal({
           </div>
 
           {/* ── Specs Section ── */}
-          <div className="px-6 pb-6 border-t border-border pt-5">
+          <div className="mt-6 pt-6 border-t border-border px-6">
             <SpecsSection
-              module="automobiles"
+              module="iod"
               itemId={item.id}
               specs={item.specs}
               specsUpdatedAt={item.specs_updated_at}
-              template={autoConfig.specTemplate}
+              template={iodConfig.specTemplate}
               onUpdated={(specs, specs_updated_at) =>
                 onItemUpdated?.({ ...item, specs, specs_updated_at })
               }
@@ -402,8 +361,8 @@ export default function AutomobileDetailModal({
           </div>
 
           {/* ── Sell Section ── */}
-          <div className="px-6 pb-6 border-t border-border pt-5">
-            <ListForSaleSection module="automobiles" itemId={item.id} condition={item.condition} initialIntro={item.listing_intro} initialFooter={item.listing_footer} onIntroSaved={(v) => onItemUpdated?.({ ...item, listing_intro: v })} onFooterSaved={(v) => onItemUpdated?.({ ...item, listing_footer: v })} initialPackage={{ weight: item.package_weight_lb, length: item.package_length_in, width: item.package_width_in, height: item.package_height_in }} onPackageSaved={(p) => onItemUpdated?.({ ...item, package_weight_lb: p.weight, package_length_in: p.length, package_width_in: p.width, package_height_in: p.height })} initialSellPrice={item.listing_price} userPrice={item.latest_user_price} aiPrice={item.latest_ai_price} onSellPriceSaved={(v) => onItemUpdated?.({ ...item, listing_price: v })} />
+          <div className="mt-6 pt-6 border-t border-border px-6">
+            <ListForSaleSection module="iod" itemId={item.id} condition={item.condition} initialIntro={item.listing_intro} initialFooter={item.listing_footer} onIntroSaved={(v) => onItemUpdated?.({ ...item, listing_intro: v })} onFooterSaved={(v) => onItemUpdated?.({ ...item, listing_footer: v })} initialPackage={{ weight: item.package_weight_lb, length: item.package_length_in, width: item.package_width_in, height: item.package_height_in }} onPackageSaved={(p) => onItemUpdated?.({ ...item, package_weight_lb: p.weight, package_length_in: p.length, package_width_in: p.width, package_height_in: p.height })} initialSellPrice={item.listing_price} userPrice={item.latest_user_price} aiPrice={item.latest_ai_price} onSellPriceSaved={(v) => onItemUpdated?.({ ...item, listing_price: v })} />
           </div>
 
           {/* Valuation section */}
@@ -443,7 +402,7 @@ export default function AutomobileDetailModal({
             {/* Insurance value (CUR-3) — renders only when item.insure is true. */}
             <InsuranceValueRow
               item={item}
-              module="automobiles"
+              module="iod"
               onComputed={(fields) => onItemUpdated?.({ ...item, ...fields })}
             />
 
@@ -472,7 +431,7 @@ export default function AutomobileDetailModal({
               <div className="text-center py-6">
                 <div className="w-10 h-10 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-3" />
                 <p className="text-sm text-text-muted">Researching market value...</p>
-                <p className="text-xs text-text-dim mt-1">This may take 15-30 seconds</p>
+                <p className="text-xs text-text-dim mt-1">This may take 15–30 seconds</p>
               </div>
             )}
 
@@ -565,11 +524,10 @@ export default function AutomobileDetailModal({
               </div>
             )}
           </div>
-        </div>
-      </div>
+        </section>
 
       {showEditModal && (
-        <EditAutomobileModal
+        <EditIoDModal
           item={item}
           onClose={() => setShowEditModal(false)}
           onItemUpdated={(updated) => {
@@ -588,7 +546,7 @@ export default function AutomobileDetailModal({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={images[lightboxIndex]?.path}
-            alt={title}
+            alt={item.short_description}
             className="max-w-[90vw] max-h-[90vh] object-contain"
             onClick={(e) => e.stopPropagation()}
           />

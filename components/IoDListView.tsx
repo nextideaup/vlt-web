@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import { IoDItem, CONDITION_COLORS, IOD_CATEGORY_LABELS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
 import SelectionCheckbox from "@/components/SelectionCheckbox";
@@ -32,7 +34,8 @@ const COLUMNS: { label: string; field?: string; align?: "left" | "right" }[] = [
 
 interface IoDListViewProps {
   items: IoDItem[];
-  onItemClick: (item: IoDItem) => void;
+  /** Item detail page for a row (STD-NAV-002). */
+  itemHref: (item: IoDItem) => string;
   onDelete: (id: string) => void;
   selectedIds?: Set<string>;
   onSelectChange?: (id: string, selected: boolean) => void;
@@ -44,7 +47,7 @@ interface IoDListViewProps {
 
 export default function IoDListView({
   items,
-  onItemClick,
+  itemHref,
   selectedIds,
   onSelectChange,
   onSelectAllToggle,
@@ -53,6 +56,7 @@ export default function IoDListView({
   onSortToggle,
 }: IoDListViewProps) {
   const { hideValues } = useHideValues();
+  const openRow = useRowLink();
   const fmt = (price: number | null | undefined) => hideValues ? "$•••" : fmtRaw(price);
 
   const selectionEnabled = !!selectedIds && !!onSelectChange && !!onSelectAllToggle;
@@ -90,7 +94,7 @@ export default function IoDListView({
             return (
               <tr
                 key={item.id}
-                onClick={() => onItemClick(item)}
+                onClick={(e) => openRow(e, itemHref(item))}
                 className={`group cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                   isSelected ? "bg-accent/5" : idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                 }`}
@@ -104,7 +108,7 @@ export default function IoDListView({
                   </td>
                 )}
                 <td className="px-4 py-3"><RowThumb images={item.images} /></td>
-                <td className="px-4 py-3 text-text font-medium max-w-[200px] truncate">{item.short_description}</td>
+                <td className="px-4 py-3 text-text font-medium max-w-[200px] truncate"><Link href={itemHref(item)} className="hover:text-accent hover:underline underline-offset-2">{item.short_description}</Link></td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{IOD_CATEGORY_LABELS[item.category]}</td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.brand || "—"}</td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.item_type || "—"}</td>

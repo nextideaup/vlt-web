@@ -2,26 +2,23 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { GuitarItem, WatchItem, AutoItem, IoDItem } from "@/lib/types";
-import ItemDetailModal from "@/components/ItemDetailModal";
-import WatchDetailModal from "@/components/WatchDetailModal";
-import AutomobileDetailModal from "@/components/AutomobileDetailModal";
-import IoDDetailModal from "@/components/IoDDetailModal";
+import { useRouter } from "next/navigation";
+import { itemHrefForType } from "@/lib/itemRoutes";
 import PortfolioChart from "@/components/PortfolioChart";
 import { useUserModules } from "@/lib/UserModulesContext";
 import { useHideValues } from "@/lib/HideValuesContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-// `collection_type` as /api/dashboard returns it, mapped to the item API the
-// detail fetch goes to and the label/badge shown for it.
+// `collection_type` as /api/dashboard returns it, mapped to the label/badge
+// shown for it. Item links come from itemHrefForType (lib/itemRoutes.ts).
 type CollectionType = "guitar" | "watch" | "auto" | "iod";
 
-const COLLECTION_TYPES: Record<CollectionType, { api: string; label: string; badge: string }> = {
-  guitar: { api: "/api/guitars",     label: "Guitar",      badge: "bg-accent/10 text-accent" },
-  watch:  { api: "/api/watches",     label: "Watch",       badge: "bg-sky-900/40 text-sky-400" },
-  auto:   { api: "/api/automobiles", label: "Automobile",  badge: "bg-[#4ade80]/10 text-[#4ade80]" },
-  iod:    { api: "/api/iod",         label: "Collectible", badge: "bg-[#a78bfa]/10 text-[#a78bfa]" },
+const COLLECTION_TYPES: Record<CollectionType, { label: string; badge: string }> = {
+  guitar: { label: "Guitar",      badge: "bg-accent/10 text-accent" },
+  watch:  { label: "Watch",       badge: "bg-sky-900/40 text-sky-400" },
+  auto:   { label: "Automobile",  badge: "bg-[#4ade80]/10 text-[#4ade80]" },
+  iod:    { label: "Collectible", badge: "bg-[#a78bfa]/10 text-[#a78bfa]" },
 };
 
 function isCollectionType(t: string): t is CollectionType {
@@ -187,30 +184,20 @@ export default function DashboardPage() {
   const { isEnabled } = useUserModules();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [modalItem, setModalItem] = useState<GuitarItem | WatchItem | AutoItem | IoDItem | null>(null);
-  const [modalType, setModalType] = useState<CollectionType | null>(null);
+  const router = useRouter();
   const [openError, setOpenError] = useState<string | null>(null);
 
-  // Opens the detail modal for a Recent Entry or activity-feed item. Failures
-  // are surfaced in a banner rather than swallowed.
-  const openItem = useCallback(async (id: string, type: string) => {
+  // Item detail is a page now (STD-NAV-002, VLT-43): Recent Entry and the
+  // activity feed navigate to it. The page itself handles a missing item.
+  const openItem = useCallback((id: string, type: string) => {
     setOpenError(null);
-    if (!isCollectionType(type)) {
+    const href = itemHrefForType(type, id);
+    if (!href) {
       setOpenError(`Couldn't open this item (unknown collection "${type}").`);
       return;
     }
-    try {
-      const res = await fetch(`${COLLECTION_TYPES[type].api}/${id}`);
-      if (!res.ok) {
-        setOpenError(`Couldn't open this ${COLLECTION_TYPES[type].label.toLowerCase()} (HTTP ${res.status}).`);
-        return;
-      }
-      setModalItem(await res.json());
-      setModalType(type);
-    } catch {
-      setOpenError(`Couldn't open this ${COLLECTION_TYPES[type].label.toLowerCase()}. Check your connection and try again.`);
-    }
-  }, []);
+    router.push(href);
+  }, [router]);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -225,8 +212,6 @@ export default function DashboardPage() {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
-  const closeModal = () => { setModalItem(null); setModalType(null); };
-  const onModalDelete = () => { closeModal(); loadDashboard(); };
 
   // Sum only from enabled collections so hidden ones don't inflate the overview
   const totalValue =
@@ -631,43 +616,6 @@ export default function DashboardPage() {
       </div>
     )}
 
-    {/* Item detail modals */}
-    {modalItem && modalType === "guitar" && (
-      <ItemDetailModal
-        item={modalItem as GuitarItem}
-        onClose={closeModal}
-        onDelete={onModalDelete}
-        onValuationSaved={() => loadDashboard()}
-        onItemUpdated={(updated) => setModalItem(updated)}
-      />
-    )}
-    {modalItem && modalType === "watch" && (
-      <WatchDetailModal
-        item={modalItem as WatchItem}
-        onClose={closeModal}
-        onDelete={onModalDelete}
-        onValuationSaved={() => loadDashboard()}
-        onItemUpdated={(updated) => setModalItem(updated)}
-      />
-    )}
-    {modalItem && modalType === "auto" && (
-      <AutomobileDetailModal
-        item={modalItem as AutoItem}
-        onClose={closeModal}
-        onDelete={onModalDelete}
-        onValuationSaved={() => loadDashboard()}
-        onItemUpdated={(updated) => setModalItem(updated)}
-      />
-    )}
-    {modalItem && modalType === "iod" && (
-      <IoDDetailModal
-        item={modalItem as IoDItem}
-        onClose={closeModal}
-        onDelete={onModalDelete}
-        onValuationSaved={() => loadDashboard()}
-        onItemUpdated={(updated) => setModalItem(updated)}
-      />
-    )}
     </>
   );
 }

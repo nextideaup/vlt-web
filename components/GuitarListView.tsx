@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import { GuitarItem, CONDITION_COLORS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
 import SelectionCheckbox from "@/components/SelectionCheckbox";
@@ -36,7 +38,8 @@ const COLUMNS: { label: string; field?: string; align?: "left" | "right" }[] = [
 
 interface GuitarListViewProps {
   items: GuitarItem[];
-  onItemClick: (item: GuitarItem) => void;
+  /** Item detail page for a row (STD-NAV-002). */
+  itemHref: (item: GuitarItem) => string;
   onDelete: (id: string) => void;
   // Bulk-select props (optional — when omitted, the checkbox column is
   // hidden so callers that don't need selection keep working unchanged).
@@ -51,7 +54,7 @@ interface GuitarListViewProps {
 
 export default function GuitarListView({
   items,
-  onItemClick,
+  itemHref,
   selectedIds,
   onSelectChange,
   onSelectAllToggle,
@@ -60,6 +63,7 @@ export default function GuitarListView({
   onSortToggle,
 }: GuitarListViewProps) {
   const { hideValues } = useHideValues();
+  const openRow = useRowLink();
   const fmt = (price: number | null | undefined) => hideValues ? "$•••" : fmtRaw(price);
 
   const selectionEnabled = !!selectedIds && !!onSelectChange && !!onSelectAllToggle;
@@ -97,7 +101,7 @@ export default function GuitarListView({
             return (
               <tr
                 key={item.id}
-                onClick={() => onItemClick(item)}
+                onClick={(e) => openRow(e, itemHref(item))}
                 className={`group cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                   isSelected ? "bg-accent/5" : idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                 }`}
@@ -113,7 +117,7 @@ export default function GuitarListView({
                 <td className="px-4 py-3"><RowThumb images={item.images} /></td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.year ?? "—"}</td>
                 <td className="px-4 py-3 text-text font-medium whitespace-nowrap">{item.brand}</td>
-                <td className="px-4 py-3 text-text whitespace-nowrap">{item.model}</td>
+                <td className="px-4 py-3 text-text whitespace-nowrap"><Link href={itemHref(item)} className="hover:text-accent hover:underline underline-offset-2">{item.model}</Link></td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.color_finish || "—"}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <span
