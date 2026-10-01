@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { GuitarPursuit, GUITAR_SOURCES, PursuitStatus } from "@/lib/types";
 import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
+import ModalShell from "@/components/forms/ModalShell";
+import { useDirtyGuard } from "@/lib/hooks/useDirtyGuard";
 
 interface EditGuitarPursuitModalProps {
   pursuit: GuitarPursuit;
@@ -36,6 +38,8 @@ export default function EditGuitarPursuitModal({
     notes: pursuit.notes ?? "",
     status: pursuit.status as PursuitStatus,
   });
+  // STD-NAV-005: compare against the values the form opened with.
+  const guard = useDirtyGuard(form, onClose);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const confirmDialog = useConfirm();
@@ -125,250 +129,230 @@ export default function EditGuitarPursuitModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
+    <ModalShell
+      eyebrow="The Pursuit"
+      title="Edit Pursuit"
+      size="md"
+      onClose={guard.requestClose}
+      isDirty={guard.isDirty}
     >
-      <div
-        className="bg-surface rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl border border-border"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-6 border-b border-border sticky top-0 bg-surface z-10">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-accent font-label mb-0.5">
-              The Pursuit
-            </p>
-            <h2 className="text-xl font-bold text-text">Edit Pursuit</h2>
+      <form onSubmit={handleSubmit} className="px-8 py-6 space-y-5">
+        {error && (
+          <div className="bg-red-900/30 border border-red-700/40 rounded px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-lg hover:bg-surface-3 text-text-dim hover:text-text transition-colors flex items-center justify-center"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        )}
+
+        {/* Brand + Model */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Brand</label>
+            <input
+              name="brand"
+              value={form.brand}
+              onChange={handleChange}
+              placeholder="e.g. Fender"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Model</label>
+            <input
+              name="model"
+              value={form.model}
+              onChange={handleChange}
+              placeholder="e.g. Stratocaster"
+              className={inputClass}
+            />
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-8 py-6 space-y-5">
-          {error && (
-            <div className="bg-red-900/30 border border-red-700/40 rounded px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
-          )}
-
-          {/* Brand + Model */}
+        {/* Year Range */}
+        <div>
+          <label className={labelClass}>Year Range</label>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Brand</label>
-              <input
-                name="brand"
-                value={form.brand}
-                onChange={handleChange}
-                placeholder="e.g. Fender"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Model</label>
-              <input
-                name="model"
-                value={form.model}
-                onChange={handleChange}
-                placeholder="e.g. Stratocaster"
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          {/* Year Range */}
-          <div>
-            <label className={labelClass}>Year Range</label>
-            <div className="grid grid-cols-2 gap-4">
-              <input
-                name="year_min"
-                type="number"
-                value={form.year_min}
-                onChange={handleChange}
-                placeholder="From Year"
-                min={1800}
-                max={2100}
-                className={inputClass}
-              />
-              <input
-                name="year_max"
-                type="number"
-                value={form.year_max}
-                onChange={handleChange}
-                placeholder="To Year"
-                min={1800}
-                max={2100}
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          {/* Color / Finish */}
-          <div>
-            <label className={labelClass}>Color / Finish</label>
             <input
-              name="color_finish"
-              value={form.color_finish}
+              name="year_min"
+              type="number"
+              value={form.year_min}
               onChange={handleChange}
-              placeholder="e.g. Sunburst, Cherry Red"
+              placeholder="From Year"
+              min={1800}
+              max={2100}
+              className={inputClass}
+            />
+            <input
+              name="year_max"
+              type="number"
+              value={form.year_max}
+              onChange={handleChange}
+              placeholder="To Year"
+              min={1800}
+              max={2100}
               className={inputClass}
             />
           </div>
+        </div>
 
-          {/* Price Range */}
-          <div>
-            <label className={labelClass}>Price Range</label>
-            <div className="grid grid-cols-2 gap-4">
-              <input
-                name="price_min"
-                type="number"
-                value={form.price_min}
-                onChange={handleChange}
-                placeholder="Min $"
-                min={0}
-                className={inputClass}
-              />
-              <input
-                name="price_max"
-                type="number"
-                value={form.price_max}
-                onChange={handleChange}
-                placeholder="Max $"
-                min={0}
-                className={inputClass}
-              />
-            </div>
-          </div>
+        {/* Color / Finish */}
+        <div>
+          <label className={labelClass}>Color / Finish</label>
+          <input
+            name="color_finish"
+            value={form.color_finish}
+            onChange={handleChange}
+            placeholder="e.g. Sunburst, Cherry Red"
+            className={inputClass}
+          />
+        </div>
 
-          {/* Where to Look */}
-          <div>
-            <label className={labelClass}>Where to Look</label>
-            <div className="grid grid-cols-2 gap-2">
-              {GUITAR_SOURCES.map((source) => {
-                const checked = form.sources.includes(source.id);
-                return (
-                  <label
-                    key={source.id}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded border cursor-pointer transition-colors ${
-                      checked
-                        ? "bg-accent/10 border-accent/40 text-text"
-                        : "bg-surface-2 border-border text-text-dim hover:border-accent/30 hover:text-text"
-                    }`}
-                  >
-                    <div
-                      className={`w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors ${
-                        checked ? "bg-accent border-accent" : "border-border"
-                      }`}
-                      onClick={() => handleSourceToggle(source.id)}
-                    >
-                      {checked && (
-                        <svg className="w-2.5 h-2.5 text-on-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <span
-                      className="text-sm"
-                      onClick={() => handleSourceToggle(source.id)}
-                    >
-                      {source.label}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-
-            {needsLocation && (
-              <div className="mt-3">
-                <label className={labelClass}>Nearby Location (city or zip)</label>
-                <input
-                  name="facebook_location"
-                  value={form.facebook_location}
-                  onChange={handleChange}
-                  placeholder="e.g. Austin, TX or 78701"
-                  className={inputClass}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Exclude Terms */}
-          <div>
-            <label className={labelClass}>Exclude Terms</label>
+        {/* Price Range */}
+        <div>
+          <label className={labelClass}>Price Range</label>
+          <div className="grid grid-cols-2 gap-4">
             <input
-              name="exclude_terms"
-              value={form.exclude_terms}
+              name="price_min"
+              type="number"
+              value={form.price_min}
               onChange={handleChange}
-              placeholder="e.g. Custom, case, kit, parts (comma-separated)"
+              placeholder="Min $"
+              min={0}
               className={inputClass}
             />
-            <p className="text-[11px] text-text-dim mt-1">Listings containing any of these words will be excluded from results.</p>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className={labelClass}>Notes</label>
-            <textarea
-              name="notes"
-              value={form.notes}
+            <input
+              name="price_max"
+              type="number"
+              value={form.price_max}
               onChange={handleChange}
-              placeholder="Any specific details, features, or conditions..."
-              rows={3}
-              className={`${inputClass} resize-none`}
+              placeholder="Max $"
+              min={0}
+              className={inputClass}
             />
           </div>
+        </div>
 
-          {/* Status */}
-          <div>
-            <label className={labelClass}>Status</label>
-            <div className="flex gap-2">
-              {(["active", "paused", "found"] as PursuitStatus[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, status: s }))}
-                  className={`px-4 py-2 rounded text-sm font-medium capitalize border transition-colors ${
-                    form.status === s
-                      ? s === "active"
-                        ? "bg-emerald-900/40 text-emerald-400 border-emerald-700/40"
-                        : s === "found"
-                        ? "bg-accent/10 text-accent border-accent/30"
-                        : "bg-surface-3 text-text-dim border-border"
-                      : "bg-surface-2 text-text-dim border-border hover:border-accent/30 hover:text-text"
+        {/* Where to Look */}
+        <div>
+          <label className={labelClass}>Where to Look</label>
+          <div className="grid grid-cols-2 gap-2">
+            {GUITAR_SOURCES.map((source) => {
+              const checked = form.sources.includes(source.id);
+              return (
+                <label
+                  key={source.id}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded border cursor-pointer transition-colors ${
+                    checked
+                      ? "bg-accent/10 border-accent/40 text-text"
+                      : "bg-surface-2 border-border text-text-dim hover:border-accent/30 hover:text-text"
                   }`}
                 >
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
-            </div>
+                  <div
+                    className={`w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors ${
+                      checked ? "bg-accent border-accent" : "border-border"
+                    }`}
+                    onClick={() => handleSourceToggle(source.id)}
+                  >
+                    {checked && (
+                      <svg className="w-2.5 h-2.5 text-on-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <span
+                    className="text-sm"
+                    onClick={() => handleSourceToggle(source.id)}
+                  >
+                    {source.label}
+                  </span>
+                </label>
+              );
+            })}
           </div>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={submitting || deleting}
-            className="w-full bg-accent text-on-primary font-bold py-3 rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm uppercase tracking-widest"
-          >
-            {submitting ? "Saving..." : "Save Changes"}
-          </button>
+          {needsLocation && (
+            <div className="mt-3">
+              <label className={labelClass}>Nearby Location (city or zip)</label>
+              <input
+                name="facebook_location"
+                value={form.facebook_location}
+                onChange={handleChange}
+                placeholder="e.g. Austin, TX or 78701"
+                className={inputClass}
+              />
+            </div>
+          )}
+        </div>
 
-          {/* Delete */}
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={submitting || deleting}
-            className="w-full bg-red-900/30 text-red-400 border border-red-700/40 font-medium py-2.5 rounded-lg hover:bg-red-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-          >
-            {deleting ? "Deleting..." : "Delete Pursuit"}
-          </button>
-        </form>
-      </div>
-    </div>
+        {/* Exclude Terms */}
+        <div>
+          <label className={labelClass}>Exclude Terms</label>
+          <input
+            name="exclude_terms"
+            value={form.exclude_terms}
+            onChange={handleChange}
+            placeholder="e.g. Custom, case, kit, parts (comma-separated)"
+            className={inputClass}
+          />
+          <p className="text-[11px] text-text-dim mt-1">Listings containing any of these words will be excluded from results.</p>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className={labelClass}>Notes</label>
+          <textarea
+            name="notes"
+            value={form.notes}
+            onChange={handleChange}
+            placeholder="Any specific details, features, or conditions..."
+            rows={3}
+            className={`${inputClass} resize-none`}
+          />
+        </div>
+
+        {/* Status */}
+        <div>
+          <label className={labelClass}>Status</label>
+          <div className="flex gap-2">
+            {(["active", "paused", "found"] as PursuitStatus[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, status: s }))}
+                className={`px-4 py-2 rounded text-sm font-medium capitalize border transition-colors ${
+                  form.status === s
+                    ? s === "active"
+                      ? "bg-emerald-900/40 text-emerald-400 border-emerald-700/40"
+                      : s === "found"
+                      ? "bg-accent/10 text-accent border-accent/30"
+                      : "bg-surface-3 text-text-dim border-border"
+                    : "bg-surface-2 text-text-dim border-border hover:border-accent/30 hover:text-text"
+                }`}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={submitting || deleting}
+          className="w-full bg-accent text-on-primary font-bold py-3 rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm uppercase tracking-widest"
+        >
+          {submitting ? "Saving..." : "Save Changes"}
+        </button>
+
+        {/* Delete */}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={submitting || deleting}
+          className="w-full bg-red-900/30 text-red-400 border border-red-700/40 font-medium py-2.5 rounded-lg hover:bg-red-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+        >
+          {deleting ? "Deleting..." : "Delete Pursuit"}
+        </button>
+      </form>
+    </ModalShell>
   );
 }

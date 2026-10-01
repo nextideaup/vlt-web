@@ -15,6 +15,7 @@ import { useEditImageList } from "@/lib/hooks/useEditImageList";
 import { useSpecsList } from "@/lib/hooks/useSpecsList";
 import { autoConfig } from "@/lib/collections/auto";
 import { uploadFiles, type UploadedFile } from "@/lib/api/uploadFiles";
+import { useDirtyGuard } from "@/lib/hooks/useDirtyGuard";
 import ModalShell from "@/components/forms/ModalShell";
 import EditImagesEditor from "@/components/forms/EditImagesEditor";
 import SpecsEditor from "@/components/forms/SpecsEditor";
@@ -72,6 +73,12 @@ export default function EditAutomobileModal({ item, onClose, onItemUpdated }: Ed
 
   const editImages = useEditImageList<AutoImage>(item.images ?? []);
   const specs = useSpecsList(item.specs);
+  // STD-NAV-005: compare against the values the form opened with.
+  const guard = useDirtyGuard({
+    form,
+    images: [editImages.derived.imageOrder, editImages.derived.imagesToDelete, editImages.derived.pendingFiles.length],
+    specs: specs.derive(),
+  }, onClose);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -161,7 +168,8 @@ export default function EditAutomobileModal({ item, onClose, onItemUpdated }: Ed
     <ModalShell
       title="Edit Automobile"
       subtitle={[item.year, item.brand, item.model].filter(Boolean).join(" ")}
-      onClose={onClose}
+      onClose={guard.requestClose}
+      isDirty={guard.isDirty}
       nested
     >
       <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
@@ -407,7 +415,7 @@ export default function EditAutomobileModal({ item, onClose, onItemUpdated }: Ed
         <EditImagesEditor edit={editImages} />
 
         <ModalActions
-          onCancel={onClose}
+          onCancel={guard.requestClose}
           submitting={submitting}
           uploading={uploading}
           submitLabel="Save Changes"

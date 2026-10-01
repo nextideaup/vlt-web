@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { IoDPursuit, IOD_SOURCES, PursuitStatus } from "@/lib/types";
+import ModalShell from "@/components/forms/ModalShell";
+import { useDirtyGuard } from "@/lib/hooks/useDirtyGuard";
 
 interface AddIoDPursuitModalProps {
   onClose: () => void;
@@ -40,6 +42,8 @@ export default function AddIoDPursuitModal({
     notes: "",
     status: "active",
   });
+  // STD-NAV-005: compare against the values the form opened with.
+  const guard = useDirtyGuard(form, onClose);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,197 +105,177 @@ export default function AddIoDPursuitModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
+    <ModalShell
+      eyebrow="The Pursuit"
+      title="Add to Pursuit"
+      size="md"
+      onClose={guard.requestClose}
+      isDirty={guard.isDirty}
     >
-      <div
-        className="bg-surface rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl border border-border"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-6 border-b border-border sticky top-0 bg-surface z-10">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-accent font-label mb-0.5">
-              The Pursuit
-            </p>
-            <h2 className="text-xl font-bold text-text">Add to Pursuit</h2>
+      <form onSubmit={handleSubmit} className="px-8 py-6 space-y-5">
+        {error && (
+          <div className="bg-red-900/30 border border-red-700/40 rounded px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-lg hover:bg-surface-3 text-text-dim hover:text-text transition-colors flex items-center justify-center"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        )}
+
+        {/* Item Type + Brand */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Item Type</label>
+            <input
+              name="item_type"
+              value={form.item_type}
+              onChange={handleChange}
+              placeholder="e.g. Print, Painting, Jersey"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Brand / Artist</label>
+            <input
+              name="brand"
+              value={form.brand}
+              onChange={handleChange}
+              placeholder="e.g. Warhol, Banksy"
+              className={inputClass}
+            />
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-8 py-6 space-y-5">
-          {error && (
-            <div className="bg-red-900/30 border border-red-700/40 rounded px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
-          )}
+        {/* Description */}
+        <div>
+          <label className={labelClass}>Description</label>
+          <input
+            name="description"
+            value={form.description}
+            onChange={handleChange}
+            placeholder="e.g. Marilyn Monroe screenprint, 1967"
+            className={inputClass}
+          />
+        </div>
 
-          {/* Item Type + Brand */}
+        {/* Price Range */}
+        <div>
+          <label className={labelClass}>Price Range</label>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Item Type</label>
-              <input
-                name="item_type"
-                value={form.item_type}
-                onChange={handleChange}
-                placeholder="e.g. Print, Painting, Jersey"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Brand / Artist</label>
-              <input
-                name="brand"
-                value={form.brand}
-                onChange={handleChange}
-                placeholder="e.g. Warhol, Banksy"
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className={labelClass}>Description</label>
             <input
-              name="description"
-              value={form.description}
+              name="price_min"
+              type="number"
+              value={form.price_min}
               onChange={handleChange}
-              placeholder="e.g. Marilyn Monroe screenprint, 1967"
+              placeholder="Min $"
+              min={0}
+              className={inputClass}
+            />
+            <input
+              name="price_max"
+              type="number"
+              value={form.price_max}
+              onChange={handleChange}
+              placeholder="Max $"
+              min={0}
               className={inputClass}
             />
           </div>
+        </div>
 
-          {/* Price Range */}
-          <div>
-            <label className={labelClass}>Price Range</label>
-            <div className="grid grid-cols-2 gap-4">
-              <input
-                name="price_min"
-                type="number"
-                value={form.price_min}
-                onChange={handleChange}
-                placeholder="Min $"
-                min={0}
-                className={inputClass}
-              />
-              <input
-                name="price_max"
-                type="number"
-                value={form.price_max}
-                onChange={handleChange}
-                placeholder="Max $"
-                min={0}
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          {/* Where to Look */}
-          <div>
-            <label className={labelClass}>Where to Look</label>
-            <div className="grid grid-cols-2 gap-2">
-              {IOD_SOURCES.map((source) => {
-                const checked = form.sources.includes(source.id);
-                return (
-                  <label
-                    key={source.id}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded border cursor-pointer transition-colors ${
-                      checked
-                        ? "bg-accent/10 border-accent/40 text-text"
-                        : "bg-surface-2 border-border text-text-dim hover:border-accent/30 hover:text-text"
-                    }`}
-                  >
-                    <div
-                      className={`w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors ${
-                        checked ? "bg-accent border-accent" : "border-border"
-                      }`}
-                      onClick={() => handleSourceToggle(source.id)}
-                    >
-                      {checked && (
-                        <svg className="w-2.5 h-2.5 text-on-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className="text-sm" onClick={() => handleSourceToggle(source.id)}>
-                      {source.label}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Exclude Terms */}
-          <div>
-            <label className={labelClass}>Exclude Terms</label>
-            <input
-              name="exclude_terms"
-              value={form.exclude_terms}
-              onChange={handleChange}
-              placeholder="e.g. reproduction, print, poster (comma-separated)"
-              className={inputClass}
-            />
-            <p className="text-[11px] text-text-dim mt-1">Listings containing any of these words will be excluded from results.</p>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className={labelClass}>Notes</label>
-            <textarea
-              name="notes"
-              value={form.notes}
-              onChange={handleChange}
-              placeholder="Any specific details, provenance requirements, or conditions..."
-              rows={3}
-              className={`${inputClass} resize-none`}
-            />
-          </div>
-
-          {/* Status */}
-          <div>
-            <label className={labelClass}>Status</label>
-            <div className="flex gap-2">
-              {(["active", "paused", "found"] as PursuitStatus[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, status: s }))}
-                  className={`px-4 py-2 rounded text-sm font-medium capitalize border transition-colors ${
-                    form.status === s
-                      ? s === "active"
-                        ? "bg-emerald-900/40 text-emerald-400 border-emerald-700/40"
-                        : s === "found"
-                        ? "bg-accent/10 text-accent border-accent/30"
-                        : "bg-surface-3 text-text-dim border-border"
-                      : "bg-surface-2 text-text-dim border-border hover:border-accent/30 hover:text-text"
+        {/* Where to Look */}
+        <div>
+          <label className={labelClass}>Where to Look</label>
+          <div className="grid grid-cols-2 gap-2">
+            {IOD_SOURCES.map((source) => {
+              const checked = form.sources.includes(source.id);
+              return (
+                <label
+                  key={source.id}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded border cursor-pointer transition-colors ${
+                    checked
+                      ? "bg-accent/10 border-accent/40 text-text"
+                      : "bg-surface-2 border-border text-text-dim hover:border-accent/30 hover:text-text"
                   }`}
                 >
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
-            </div>
+                  <div
+                    className={`w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors ${
+                      checked ? "bg-accent border-accent" : "border-border"
+                    }`}
+                    onClick={() => handleSourceToggle(source.id)}
+                  >
+                    {checked && (
+                      <svg className="w-2.5 h-2.5 text-on-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="text-sm" onClick={() => handleSourceToggle(source.id)}>
+                    {source.label}
+                  </span>
+                </label>
+              );
+            })}
           </div>
+        </div>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-accent text-on-primary font-bold py-3 rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm uppercase tracking-widest"
-          >
-            {submitting ? "Saving..." : "Add to Pursuit"}
-          </button>
-        </form>
-      </div>
-    </div>
+        {/* Exclude Terms */}
+        <div>
+          <label className={labelClass}>Exclude Terms</label>
+          <input
+            name="exclude_terms"
+            value={form.exclude_terms}
+            onChange={handleChange}
+            placeholder="e.g. reproduction, print, poster (comma-separated)"
+            className={inputClass}
+          />
+          <p className="text-[11px] text-text-dim mt-1">Listings containing any of these words will be excluded from results.</p>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className={labelClass}>Notes</label>
+          <textarea
+            name="notes"
+            value={form.notes}
+            onChange={handleChange}
+            placeholder="Any specific details, provenance requirements, or conditions..."
+            rows={3}
+            className={`${inputClass} resize-none`}
+          />
+        </div>
+
+        {/* Status */}
+        <div>
+          <label className={labelClass}>Status</label>
+          <div className="flex gap-2">
+            {(["active", "paused", "found"] as PursuitStatus[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, status: s }))}
+                className={`px-4 py-2 rounded text-sm font-medium capitalize border transition-colors ${
+                  form.status === s
+                    ? s === "active"
+                      ? "bg-emerald-900/40 text-emerald-400 border-emerald-700/40"
+                      : s === "found"
+                      ? "bg-accent/10 text-accent border-accent/30"
+                      : "bg-surface-3 text-text-dim border-border"
+                    : "bg-surface-2 text-text-dim border-border hover:border-accent/30 hover:text-text"
+                }`}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full bg-accent text-on-primary font-bold py-3 rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm uppercase tracking-widest"
+        >
+          {submitting ? "Saving..." : "Add to Pursuit"}
+        </button>
+      </form>
+    </ModalShell>
   );
 }
