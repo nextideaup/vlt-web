@@ -177,7 +177,6 @@ export default function EditWatchModal({ item, onClose, onItemUpdated }: EditWat
       subtitle={`${item.brand} ${item.model}`}
       onClose={guard.requestClose}
       isDirty={guard.isDirty}
-      nested
     >
       <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
         <div>

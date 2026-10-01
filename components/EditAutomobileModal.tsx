@@ -170,7 +170,6 @@ export default function EditAutomobileModal({ item, onClose, onItemUpdated }: Ed
       subtitle={[item.year, item.brand, item.model].filter(Boolean).join(" ")}
       onClose={guard.requestClose}
       isDirty={guard.isDirty}
-      nested
     >
       <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
         <div>

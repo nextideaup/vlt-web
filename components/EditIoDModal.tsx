@@ -151,7 +151,6 @@ export default function EditIoDModal({ item, onClose, onItemUpdated }: EditIoDMo
       subtitle={IOD_CATEGORY_LABELS[form.category]}
       onClose={guard.requestClose}
       isDirty={guard.isDirty}
-      nested
     >
       <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
         <div>

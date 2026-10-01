@@ -159,7 +159,6 @@ export default function EditItemModal({ item, onClose, onItemUpdated }: EditItem
       subtitle={`${item.brand} ${item.model}`}
       onClose={guard.requestClose}
       isDirty={guard.isDirty}
-      nested
     >
       <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
         <div>

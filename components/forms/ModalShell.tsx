@@ -15,8 +15,9 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 //   - isDirty omitted   → legacy behaviour: only the X closes (no backdrop or
 //                          Escape dismissal), for modals not wired to a guard.
 
-// Stack of open shells so Escape only ever dismisses the topmost one (e.g.
-// an Edit modal opened over a Detail modal).
+// A modal never presents another modal (STD-NAV-003): detail is a page, and
+// Add/Edit open over pages only. This stack is a guard rather than a feature —
+// if two shells are ever open at once, Escape still only reaches the topmost.
 const openShells: symbol[] = [];
 
 interface ModalShellProps {
@@ -26,12 +27,6 @@ interface ModalShellProps {
   eyebrow?: string;
   onClose: () => void;
   children: ReactNode;
-  /**
-   * Stacked above another modal (e.g. an Edit modal opened from a Detail
-   * modal). Bumps z-index and darkens the backdrop slightly so the layered
-   * stack reads correctly.
-   */
-  nested?: boolean;
   /** Unsaved-changes state from useDirtyGuard. See the header comment. */
   isDirty?: boolean;
   /** Card width. "lg" (default) = max-w-2xl, "md" = max-w-xl. */
@@ -44,7 +39,6 @@ export default function ModalShell({
   eyebrow,
   onClose,
   children,
-  nested = false,
   isDirty,
   size = "lg",
 }: ModalShellProps) {
@@ -81,9 +75,9 @@ export default function ModalShell({
 
   return (
     <div
-      className={`modal-backdrop fixed inset-0 ${nested ? "z-[60]" : "z-50"} flex items-center justify-center p-4`}
+      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{
-        backgroundColor: nested ? "rgba(0,0,0,0.8)" : "rgba(0,0,0,0.7)",
+        backgroundColor: "rgba(0,0,0,0.7)",
         backdropFilter: "blur(4px)",
       }}
       onMouseDown={(e) => {
