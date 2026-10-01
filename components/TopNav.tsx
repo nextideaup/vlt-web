@@ -112,20 +112,9 @@ export default function TopNav() {
         </div>
       </div>
 
-      {/* Right — Search + Hide-values toggle + User menu */}
+      {/* Right — Hide-values toggle + User menu. (The inert "Search archives…"
+          box was removed under VLT-40; each collection list has its own search.) */}
       <div className="flex items-center gap-4">
-        <div className="hidden lg:flex items-center gap-2 bg-surface-2 border border-border px-3 py-1.5 rounded-lg">
-          <svg className="w-3.5 h-3.5 text-text-dim flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <circle cx="11" cy="11" r="8" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search archives..."
-            className="bg-transparent border-none outline-none text-sm text-text placeholder-text-dim w-40 font-label"
-          />
-        </div>
-
         {/* Hide-values toggle. Eye icon when values are visible (click to
             hide); eye-slash when hidden (click to show). Per-device only —
             see lib/HideValuesContext.tsx. */}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton } from "@/components/ListControls";
+import { ClearAllButton, SearchField } from "@/components/ListControls";
+import { matchesSearch } from "@/lib/listFilters";
 import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -45,6 +46,10 @@ const LIST_CONFIG: ListStateConfig = {
   ascFields: DEFAULT_ASC_FIELDS,
 };
 
+// STD-TBL-005: what the search box matches (substring, case-insensitive).
+const SEARCH_FIELDS = ["short_description", "brand", "item_type"];
+const SEARCH_PLACEHOLDER = "Search description, brand, item type";
+
 export default function CollectiblesPage() {
   const { hideValues } = useHideValues();
   const fmt = (n: number | null | undefined) => hideValues ? "$•••" : fmtRaw(n);
@@ -69,8 +74,14 @@ export default function CollectiblesPage() {
     setPages({ "fine-art": 0, memorabilia: 0, collectibles: 0, jewelry: 0, other: 0 });
   }, [listToggleSort]);
 
+  // STD-TBL-005: rows the search leaves visible.
+  const visibleItems = useMemo(
+    () => allItems.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
+    [allItems, list.q],
+  );
+
   const sortedItems = useMemo(() => {
-    const copy = [...allItems];
+    const copy = [...visibleItems];
     copy.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "brand") {
@@ -90,7 +101,7 @@ export default function CollectiblesPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [allItems, sortBy, sortDir]);
+  }, [visibleItems, sortBy, sortDir]);
 
   useEffect(() => {
     fetch("/api/iod")
@@ -109,12 +120,22 @@ export default function CollectiblesPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-text mb-1">Collectibles</h1>
         <p className="text-text-muted text-sm">
-          {loading ? "Loading…" : `${totalItems} item${totalItems !== 1 ? "s" : ""} across all categories`}
+          {loading
+            ? "Loading…"
+            : list.isFiltered
+              ? `Showing ${visibleItems.length} of ${totalItems} item${totalItems !== 1 ? "s" : ""}`
+              : `${totalItems} item${totalItems !== 1 ? "s" : ""} across all categories`}
         </p>
       </div>
 
       {/* List controls */}
-      <div className="flex items-center justify-end gap-2 mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <SearchField
+          value={list.q}
+          onChange={(q) => { list.setQ(q); setPages({ "fine-art": 0, memorabilia: 0, collectibles: 0, jewelry: 0, other: 0 }); }}
+          placeholder={SEARCH_PLACEHOLDER}
+          label="Search collectibles"
+        />
         <ClearAllButton onClick={() => { list.reset(); setPages({ "fine-art": 0, memorabilia: 0, collectibles: 0, jewelry: 0, other: 0 }); }} disabled={!list.canReset} />
       </div>
 
@@ -182,8 +203,14 @@ export default function CollectiblesPage() {
                       {catItems.length === 0 ? (
                         <tr>
                           <td colSpan={COLUMNS.length} className="px-4 py-5 text-sm text-text-dim text-center italic">
-                            No items yet —{" "}
-                            <Link href={`/collectibles/${cat}`} className="text-accent hover:underline">add one</Link>
+                            {list.isFiltered ? (
+                              "No matches in this category"
+                            ) : (
+                              <>
+                                No items yet —{" "}
+                                <Link href={`/collectibles/${cat}`} className="text-accent hover:underline">add one</Link>
+                              </>
+                            )}
                           </td>
                         </tr>
                       ) : (

@@ -1,7 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton } from "@/components/ListControls";
+import { ClearAllButton, SearchField, NoMatches } from "@/components/ListControls";
+import { matchesSearch } from "@/lib/listFilters";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -38,6 +39,10 @@ const LIST_CONFIG: ListStateConfig = {
   ascFields: DEFAULT_ASC_FIELDS,
 };
 
+// STD-TBL-005: what the search box matches (substring, case-insensitive).
+const SEARCH_FIELDS = ["brand", "model", "reference_number", "serial_number", "short_description"];
+const SEARCH_PLACEHOLDER = "Search brand, model, reference, serial, description";
+
 export default function WatchCategoryPage() {
   const params = useParams();
   const category = params.category as WatchCategory;
@@ -64,14 +69,23 @@ export default function WatchCategoryPage() {
   }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
+  // STD-TBL-005: rows the search leaves visible. Sorting, select-all and the
+  // bulk bar all work on these, never on rows the user can't see.
+  const visibleItems = useMemo(
+    () => items.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
+    [items, list.q],
+  );
+
+  // Drop selections that are no longer visible (after a bulk action, or when
+  // search hides them).
   useEffect(() => {
     setSelectedIds((prev) => {
-      const validIds = new Set(items.map((i) => i.id));
+      const validIds = new Set(visibleItems.map((i) => i.id));
       const next = new Set<string>();
       prev.forEach((id) => { if (validIds.has(id)) next.add(id); });
       return next.size === prev.size ? prev : next;
     });
-  }, [items]);
+  }, [visibleItems]);
 
   const { startRevalue, state: revalueState } = useRevalue();
 
@@ -97,7 +111,7 @@ export default function WatchCategoryPage() {
   }, [fetchItems]);
 
   const sortedItems = useMemo(() => {
-    const copy = [...items];
+    const copy = [...visibleItems];
     copy.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "date") {
@@ -119,7 +133,7 @@ export default function WatchCategoryPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [items, sortBy, sortDir]);
+  }, [visibleItems, sortBy, sortDir]);
 
 
   const handleItemAdded = useCallback((newItem: WatchItem, offerValuation?: boolean) => {
@@ -207,7 +221,9 @@ export default function WatchCategoryPage() {
           <h1 className="text-3xl font-bold text-text">{WATCH_CATEGORY_LABELS[category]}</h1>
           {!loading && (
             <p className="text-text-muted text-sm mt-1">
-              {items.length} item{items.length !== 1 ? "s" : ""}
+              {list.isFiltered
+                ? `Showing ${visibleItems.length} of ${items.length} item${items.length !== 1 ? "s" : ""}`
+                : `${items.length} item${items.length !== 1 ? "s" : ""}`}
             </p>
           )}
         </div>
@@ -250,6 +266,13 @@ export default function WatchCategoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Search (STD-TBL-005) */}
+      {!loading && items.length > 0 && (
+        <div className="mb-3">
+          <SearchField value={list.q} onChange={list.setQ} placeholder={SEARCH_PLACEHOLDER} label="Search watches" />
+        </div>
+      )}
 
       {/* Toolbar: sort + view toggle */}
       {!loading && items.length > 0 && (
@@ -323,6 +346,8 @@ export default function WatchCategoryPage() {
             Add First Timepiece
           </button>
         </div>
+      ) : sortedItems.length === 0 ? (
+        <NoMatches onClear={list.reset} />
       ) : viewMode === "tiles" ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {sortedItems.map((item) => (
@@ -344,8 +369,8 @@ export default function WatchCategoryPage() {
           selectedIds={selectedIds}
           onSelectChange={toggleSelect}
           onSelectAllToggle={() => {
-            if (selectedIds.size === items.length && items.length > 0) clearSelection();
-            else setSelectedIds(new Set(items.map((i) => i.id)));
+            if (selectedIds.size === visibleItems.length && visibleItems.length > 0) clearSelection();
+            else setSelectedIds(new Set(visibleItems.map((i) => i.id)));
           }}
           sortBy={sortBy}
           sortDir={sortDir}
@@ -359,9 +384,9 @@ export default function WatchCategoryPage() {
         onSpecsGenerated={fetchItems}
         selectedIds={selectedIds}
         selectedInsuredCount={items.filter((i) => selectedIds.has(i.id) && i.insure).length}
-        totalSelectableCount={items.length}
+        totalSelectableCount={visibleItems.length}
         onClearSelection={clearSelection}
-        onSelectAll={() => setSelectedIds(new Set(items.map((i) => i.id)))}
+        onSelectAll={() => setSelectedIds(new Set(visibleItems.map((i) => i.id)))}
         onActionComplete={(result) => {
           if (result.action === "set_insure") {
             setItems((prev) =>

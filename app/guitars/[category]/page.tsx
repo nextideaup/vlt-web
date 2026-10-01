@@ -1,7 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton } from "@/components/ListControls";
+import { ClearAllButton, SearchField, NoMatches } from "@/components/ListControls";
+import { matchesSearch } from "@/lib/listFilters";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -41,6 +42,10 @@ const LIST_CONFIG: ListStateConfig = {
   ascFields: DEFAULT_ASC_FIELDS,
 };
 
+// STD-TBL-005: what the search box matches (substring, case-insensitive).
+const SEARCH_FIELDS = ["brand", "model", "serial_number", "color_finish", "short_description"];
+const SEARCH_PLACEHOLDER = "Search brand, model, serial, finish, description";
+
 export default function CategoryPage() {
   const params = useParams();
   const category = params.category as GuitarCategory;
@@ -67,16 +72,23 @@ export default function CategoryPage() {
   }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // Clear stale selections when the underlying item list changes (e.g. after
-  // a bulk action) — keeps the BulkActionBar count honest.
+  // STD-TBL-005: rows the search leaves visible. Sorting, select-all and the
+  // bulk bar all work on these, never on rows the user can't see.
+  const visibleItems = useMemo(
+    () => items.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
+    [items, list.q],
+  );
+
+  // Drop selections that are no longer visible (after a bulk action, or when
+  // search hides them) — keeps the BulkActionBar count honest.
   useEffect(() => {
     setSelectedIds((prev) => {
-      const validIds = new Set(items.map((i) => i.id));
+      const validIds = new Set(visibleItems.map((i) => i.id));
       const next = new Set<string>();
       prev.forEach((id) => { if (validIds.has(id)) next.add(id); });
       return next.size === prev.size ? prev : next;
     });
-  }, [items]);
+  }, [visibleItems]);
 
   const { startRevalue, state: revalueState } = useRevalue();
 
@@ -102,7 +114,7 @@ export default function CategoryPage() {
   }, [fetchItems]);
 
   const sortedItems = useMemo(() => {
-    const copy = [...items];
+    const copy = [...visibleItems];
     copy.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "date") {
@@ -128,7 +140,7 @@ export default function CategoryPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [items, sortBy, sortDir]);
+  }, [visibleItems, sortBy, sortDir]);
 
 
   const handleItemAdded = useCallback((newItem: GuitarItem, offerValuation?: boolean) => {
@@ -219,7 +231,9 @@ export default function CategoryPage() {
           <h1 className="text-3xl font-bold text-text">{CATEGORY_LABELS[category]}</h1>
           {!loading && (
             <p className="text-text-muted text-sm mt-1">
-              {items.length} item{items.length !== 1 ? "s" : ""}
+              {list.isFiltered
+                ? `Showing ${visibleItems.length} of ${items.length} item${items.length !== 1 ? "s" : ""}`
+                : `${items.length} item${items.length !== 1 ? "s" : ""}`}
             </p>
           )}
         </div>
@@ -262,6 +276,13 @@ export default function CategoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Search (STD-TBL-005) */}
+      {!loading && items.length > 0 && (
+        <div className="mb-3">
+          <SearchField value={list.q} onChange={list.setQ} placeholder={SEARCH_PLACEHOLDER} label="Search guitars" />
+        </div>
+      )}
 
       {/* Toolbar: sort + view toggle */}
       {!loading && items.length > 0 && (
@@ -335,6 +356,8 @@ export default function CategoryPage() {
             Add First Item
           </button>
         </div>
+      ) : sortedItems.length === 0 ? (
+        <NoMatches onClear={list.reset} />
       ) : viewMode === "tiles" ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {sortedItems.map((item) => (
@@ -357,8 +380,8 @@ export default function CategoryPage() {
           onSelectChange={toggleSelect}
           onSelectAllToggle={() => {
             // Toggle: all selected → clear; otherwise → select every visible item.
-            if (selectedIds.size === items.length && items.length > 0) clearSelection();
-            else setSelectedIds(new Set(items.map((i) => i.id)));
+            if (selectedIds.size === visibleItems.length && visibleItems.length > 0) clearSelection();
+            else setSelectedIds(new Set(visibleItems.map((i) => i.id)));
           }}
           sortBy={sortBy}
           sortDir={sortDir}
@@ -372,9 +395,9 @@ export default function CategoryPage() {
         onSpecsGenerated={fetchItems}
         selectedIds={selectedIds}
         selectedInsuredCount={items.filter((i) => selectedIds.has(i.id) && i.insure).length}
-        totalSelectableCount={items.length}
+        totalSelectableCount={visibleItems.length}
         onClearSelection={clearSelection}
-        onSelectAll={() => setSelectedIds(new Set(items.map((i) => i.id)))}
+        onSelectAll={() => setSelectedIds(new Set(visibleItems.map((i) => i.id)))}
         onActionComplete={(result) => {
           if (result.action === "set_insure") {
             setItems((prev) =>
