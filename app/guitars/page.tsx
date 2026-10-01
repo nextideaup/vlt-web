@@ -1,5 +1,7 @@
 "use client";
 
+import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
+import { ClearAllButton } from "@/components/ListControls";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { itemHref } from "@/lib/itemRoutes";
@@ -41,6 +43,12 @@ const DEFAULT_ASC_FIELDS = new Set(["brand", "model", "color_finish", "short_des
 
 const PAGE_SIZE = 15;
 
+const LIST_CONFIG: ListStateConfig = {
+  defaultSort: "brand",
+  defaultDir: "asc",
+  ascFields: DEFAULT_ASC_FIELDS,
+};
+
 export default function GuitarsPage() {
   const [allItems, setAllItems] = useState<GuitarItem[]>([]);
   const openRow = useRowLink();
@@ -56,22 +64,16 @@ export default function GuitarsPage() {
   // a header in any section re-sorts every section the same way.
   // Default: Brand ASC with Year ASC as a within-brand tiebreak. See the
   // "brand" branch in sortedItems below + compareBrandThenYear helper.
-  const [sortBy, setSortBy] = useState<string>("brand");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // STD-STATE-001: sort lives in the URL, mirrored per path (lib/hooks/useListState).
+  const list = useListState(LIST_CONFIG);
+  const { sort: sortBy, dir: sortDir, toggleSort: listToggleSort } = list;
 
   const toggleSort = useCallback((field: string) => {
-    setSortBy((prev) => {
-      if (prev === field) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
-      setSortDir(DEFAULT_ASC_FIELDS.has(field) ? "asc" : "desc");
-      return field;
-    });
+    listToggleSort(field);
     // Reset pagination on every category section when sort changes so the
     // user always sees the new top of the list rather than a stale page.
     setPages({ "electric-guitars": 0, "acoustic-guitars": 0, amplifiers: 0, pedals: 0 });
-  }, []);
+  }, [listToggleSort]);
 
   const sortedItems = useMemo(() => {
     const copy = [...allItems];
@@ -121,11 +123,16 @@ export default function GuitarsPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-3xl font-bold text-text mb-1">Guitars</h1>
         <p className="text-text-muted text-sm">
           {loading ? "Loading…" : `${totalItems} item${totalItems !== 1 ? "s" : ""} across all categories`}
         </p>
+      </div>
+
+      {/* List controls */}
+      <div className="flex items-center justify-end gap-2 mb-6">
+        <ClearAllButton onClick={() => { list.reset(); setPages({ "electric-guitars": 0, "acoustic-guitars": 0, amplifiers: 0, pedals: 0 }); }} disabled={!list.canReset} />
       </div>
 
       {/* Sections */}
