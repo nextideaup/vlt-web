@@ -1,6 +1,7 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
+import { TotalsSummary } from "@/components/TotalsRow";
 import { ClearAllButton, SearchField, NoMatches, FilterBar } from "@/components/ListControls";
 import { matchesSearch, matchesFilters, FILTER_KEYS } from "@/lib/listFilters";
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -361,6 +362,9 @@ export default function CategoryPage() {
       ) : sortedItems.length === 0 ? (
         <NoMatches onClear={list.reset} />
       ) : viewMode === "tiles" ? (
+        <>
+        {/* STD-TBL-002: totals over the tiles shown (post search/filter). */}
+        <TotalsSummary items={sortedItems} />
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {sortedItems.map((item) => (
             <GuitarCard
@@ -373,6 +377,7 @@ export default function CategoryPage() {
             />
           ))}
         </div>
+        </>
       ) : (
         <GuitarListView
           items={sortedItems}

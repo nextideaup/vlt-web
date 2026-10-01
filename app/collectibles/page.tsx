@@ -17,6 +17,7 @@ import {
   CONDITION_COLORS,
 } from "@/lib/types";
 import SortableHeader from "@/components/forms/SortableHeader";
+import { TotalsRow } from "@/components/TotalsRow";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
 const fmtRaw = (n: number | null | undefined) => {
@@ -269,6 +270,8 @@ export default function CollectiblesPage() {
                         ))
                       )}
                     </tbody>
+                    {/* STD-TBL-002: totals over this section's visible rows (all pages). */}
+                    {catItems.length > 0 && <TotalsRow columns={COLUMNS} items={catItems} fmt={fmt} />}
                   </table>
                 </div>
 

@@ -7,6 +7,7 @@ import { useHideValues } from "@/lib/HideValuesContext";
 import SelectionCheckbox from "@/components/SelectionCheckbox";
 import SortableHeader from "@/components/forms/SortableHeader";
 import RowThumb from "@/components/RowThumb";
+import { TotalsRow } from "@/components/TotalsRow";
 
 const fmtRaw = (price: number | null | undefined) => {
   if (price == null) return "—";
@@ -159,6 +160,8 @@ export default function IoDListView({
             );
           })}
         </tbody>
+        {/* STD-TBL-002: totals over the rows shown (post search/filter). */}
+        <TotalsRow columns={COLUMNS} items={items} fmt={fmt} leadingCells={(selectionEnabled ? 1 : 0) + 1} />
       </table>
     </div>
   );
