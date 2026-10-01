@@ -5,13 +5,15 @@ import { ClearAllButton, SearchField, FilterBar } from "@/components/ListControl
 import { matchesSearch, matchesFilters, FILTER_KEYS, splitMulti } from "@/lib/listFilters";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { useHideValues } from "@/lib/HideValuesContext";
 import { itemHref } from "@/lib/itemRoutes";
 import { useRowLink } from "@/lib/hooks/useRowLink";
 import { GuitarItem, GuitarCategory, CATEGORY_LABELS, GUITAR_CATEGORIES, CONDITION_COLORS } from "@/lib/types";
 import SortableHeader from "@/components/forms/SortableHeader";
+import { TotalsRow } from "@/components/TotalsRow";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
-const fmt = (price: number | null | undefined) => {
+const fmtRaw = (price: number | null | undefined) => {
   if (price == null) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -56,6 +58,9 @@ const SEARCH_FIELDS = ["brand", "model", "serial_number", "color_finish", "short
 const SEARCH_PLACEHOLDER = "Search brand, model, serial, finish, description";
 
 export default function GuitarsPage() {
+  // Money cells and totals honour the Hide-values toggle like every other list.
+  const { hideValues } = useHideValues();
+  const fmt = (n: number | null | undefined) => (hideValues ? "$•••" : fmtRaw(n));
   const [allItems, setAllItems] = useState<GuitarItem[]>([]);
   const openRow = useRowLink();
   const [loading, setLoading] = useState(true);
@@ -293,6 +298,8 @@ export default function GuitarsPage() {
                         ))
                       )}
                     </tbody>
+                    {/* STD-TBL-002: totals over this section's visible rows (all pages). */}
+                    {catItems.length > 0 && <TotalsRow columns={COLUMNS} items={catItems} fmt={fmt} />}
                   </table>
                 </div>
 
