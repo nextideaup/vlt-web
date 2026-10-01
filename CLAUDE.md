@@ -177,6 +177,11 @@ objects.
 
 **Routes**:
 - `app/<module>/page.tsx` (list) + `app/<module>/[category]/page.tsx`
+- `app/<module>/item/[id]/page.tsx` — item detail page (STD-NAV-002). Thin
+  wrapper over `components/ItemPage.tsx` (load by id, breadcrumb, back link,
+  not-found) + the module's detail component (`GuitarDetail`, `WatchDetail`,
+  `AutomobileDetail`, `IoDDetail`). Build item links with `lib/itemRoutes.ts`;
+  detail is never a modal.
 - `app/api/<module>/route.ts` and `[id]/route.ts` are thin re-exports of
   `makeListHandlers(<moduleConfig>)` / `makeItemHandlers(<moduleConfig>)` from
   `lib/collection-handler.ts`
