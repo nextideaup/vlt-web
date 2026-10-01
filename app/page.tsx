@@ -2,14 +2,31 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { GuitarItem, WatchItem } from "@/lib/types";
+import { GuitarItem, WatchItem, AutoItem, IoDItem } from "@/lib/types";
 import ItemDetailModal from "@/components/ItemDetailModal";
 import WatchDetailModal from "@/components/WatchDetailModal";
+import AutomobileDetailModal from "@/components/AutomobileDetailModal";
+import IoDDetailModal from "@/components/IoDDetailModal";
 import PortfolioChart from "@/components/PortfolioChart";
 import { useUserModules } from "@/lib/UserModulesContext";
 import { useHideValues } from "@/lib/HideValuesContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+// `collection_type` as /api/dashboard returns it, mapped to the item API the
+// detail fetch goes to and the label/badge shown for it.
+type CollectionType = "guitar" | "watch" | "auto" | "iod";
+
+const COLLECTION_TYPES: Record<CollectionType, { api: string; label: string; badge: string }> = {
+  guitar: { api: "/api/guitars",     label: "Guitar",      badge: "bg-accent/10 text-accent" },
+  watch:  { api: "/api/watches",     label: "Watch",       badge: "bg-sky-900/40 text-sky-400" },
+  auto:   { api: "/api/automobiles", label: "Automobile",  badge: "bg-[#4ade80]/10 text-[#4ade80]" },
+  iod:    { api: "/api/iod",         label: "Collectible", badge: "bg-[#a78bfa]/10 text-[#a78bfa]" },
+};
+
+function isCollectionType(t: string): t is CollectionType {
+  return t in COLLECTION_TYPES;
+}
 
 interface CategoryStat {
   category: string;
@@ -33,6 +50,8 @@ interface RecentItem {
 }
 
 interface ActivityEvent {
+  item_id: string;
+  collection_type: string;
   event_type: string;
   event_date: string;
   title: string;
@@ -168,18 +187,29 @@ export default function DashboardPage() {
   const { isEnabled } = useUserModules();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [modalItem, setModalItem] = useState<GuitarItem | WatchItem | null>(null);
-  const [modalType, setModalType] = useState<"guitar" | "watch" | null>(null);
+  const [modalItem, setModalItem] = useState<GuitarItem | WatchItem | AutoItem | IoDItem | null>(null);
+  const [modalType, setModalType] = useState<CollectionType | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
-  const openRecentItem = useCallback(async (id: string, type: string) => {
-    const base = type === "watch" ? "/api/watches" : "/api/guitars";
+  // Opens the detail modal for a Recent Entry or activity-feed item. Failures
+  // are surfaced in a banner rather than swallowed.
+  const openItem = useCallback(async (id: string, type: string) => {
+    setOpenError(null);
+    if (!isCollectionType(type)) {
+      setOpenError(`Couldn't open this item (unknown collection "${type}").`);
+      return;
+    }
     try {
-      const res = await fetch(`${base}/${id}`);
-      if (!res.ok) return;
-      const item = await res.json();
-      setModalItem(item);
-      setModalType(type === "watch" ? "watch" : "guitar");
-    } catch { /* ignore */ }
+      const res = await fetch(`${COLLECTION_TYPES[type].api}/${id}`);
+      if (!res.ok) {
+        setOpenError(`Couldn't open this ${COLLECTION_TYPES[type].label.toLowerCase()} (HTTP ${res.status}).`);
+        return;
+      }
+      setModalItem(await res.json());
+      setModalType(type);
+    } catch {
+      setOpenError(`Couldn't open this ${COLLECTION_TYPES[type].label.toLowerCase()}. Check your connection and try again.`);
+    }
   }, []);
 
   const loadDashboard = useCallback(async () => {
@@ -194,6 +224,9 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  const closeModal = () => { setModalItem(null); setModalType(null); };
+  const onModalDelete = () => { closeModal(); loadDashboard(); };
 
   // Sum only from enabled collections so hidden ones don't inflate the overview
   const totalValue =
@@ -283,12 +316,12 @@ export default function DashboardPage() {
           {data?.recent_item ? (
             <div
               className="bg-surface-3 rounded-lg p-5 group hover:bg-surface-container-highest transition-all duration-300 cursor-pointer"
-              onClick={() => openRecentItem(data.recent_item!.id, data.recent_item!.collection_type)}
+              onClick={() => openItem(data.recent_item!.id, data.recent_item!.collection_type)}
             >
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-headline text-base text-text">Recent Entry</h4>
                 <button
-                  onClick={(e) => { e.stopPropagation(); openRecentItem(data.recent_item!.id, data.recent_item!.collection_type); }}
+                  onClick={(e) => { e.stopPropagation(); openItem(data.recent_item!.id, data.recent_item!.collection_type); }}
                   className="text-accent opacity-60 hover:opacity-100 transition-opacity"
                   title="Open detail"
                 >
@@ -316,13 +349,11 @@ export default function DashboardPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
-                      data.recent_item.collection_type === "watch"
-                        ? "bg-sky-900/40 text-sky-400"
-                        : "bg-accent/10 text-accent"
-                    }`}>
-                      {data.recent_item.collection_type === "watch" ? "Watch" : "Guitar"}
-                    </span>
+                    {isCollectionType(data.recent_item.collection_type) && (
+                      <span className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${COLLECTION_TYPES[data.recent_item.collection_type].badge}`}>
+                        {COLLECTION_TYPES[data.recent_item.collection_type].label}
+                      </span>
+                    )}
                   </div>
                   <p className="font-headline text-text text-sm leading-snug">
                     {[data.recent_item.year, data.recent_item.brand, data.recent_item.model].filter(Boolean).join(" ")}
@@ -547,7 +578,13 @@ export default function DashboardPage() {
                         }`}>
                           {formatDate(event.event_date)}
                         </p>
-                        <p className="text-text text-sm font-medium">{event.title}</p>
+                        <button
+                          type="button"
+                          onClick={() => openItem(event.item_id, event.collection_type)}
+                          className="text-left text-text text-sm font-medium hover:text-accent hover:underline transition-colors"
+                        >
+                          {event.title}
+                        </button>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <p className="text-text-dim text-xs">{event.subtitle}</p>
                           {event.value != null && Number(event.value) > 0 && (
@@ -580,12 +617,26 @@ export default function DashboardPage() {
 
     </div>
 
+    {/* Failed item open */}
+    {openError && (
+      <div role="alert" className="fixed bottom-6 right-6 z-50 max-w-sm flex items-start gap-3 bg-surface border border-red-400/40 rounded-xl shadow-2xl px-4 py-3">
+        <p className="text-red-400 text-sm flex-1">{openError}</p>
+        <button
+          onClick={() => setOpenError(null)}
+          className="text-text-dim hover:text-text text-sm leading-none"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      </div>
+    )}
+
     {/* Item detail modals */}
     {modalItem && modalType === "guitar" && (
       <ItemDetailModal
         item={modalItem as GuitarItem}
-        onClose={() => { setModalItem(null); setModalType(null); }}
-        onDelete={() => { setModalItem(null); setModalType(null); loadDashboard(); }}
+        onClose={closeModal}
+        onDelete={onModalDelete}
         onValuationSaved={() => loadDashboard()}
         onItemUpdated={(updated) => setModalItem(updated)}
       />
@@ -593,8 +644,26 @@ export default function DashboardPage() {
     {modalItem && modalType === "watch" && (
       <WatchDetailModal
         item={modalItem as WatchItem}
-        onClose={() => { setModalItem(null); setModalType(null); }}
-        onDelete={() => { setModalItem(null); setModalType(null); loadDashboard(); }}
+        onClose={closeModal}
+        onDelete={onModalDelete}
+        onValuationSaved={() => loadDashboard()}
+        onItemUpdated={(updated) => setModalItem(updated)}
+      />
+    )}
+    {modalItem && modalType === "auto" && (
+      <AutomobileDetailModal
+        item={modalItem as AutoItem}
+        onClose={closeModal}
+        onDelete={onModalDelete}
+        onValuationSaved={() => loadDashboard()}
+        onItemUpdated={(updated) => setModalItem(updated)}
+      />
+    )}
+    {modalItem && modalType === "iod" && (
+      <IoDDetailModal
+        item={modalItem as IoDItem}
+        onClose={closeModal}
+        onDelete={onModalDelete}
         onValuationSaved={() => loadDashboard()}
         onItemUpdated={(updated) => setModalItem(updated)}
       />
