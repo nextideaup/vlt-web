@@ -130,8 +130,10 @@ Other commands:
 
 ### Production (Railway)
 
-The Dockerfile baked-in CMD is `sh -c "node scripts/migrate.js && exec node server.js"`,
-so a deploy runs migrations then exec's the Next server. **Do not set a Custom
+The Dockerfile baked-in CMD is
+`sh -c "node scripts/migrate.js && node scripts/sync-release-notes.js && exec node server.js"`,
+so a deploy runs migrations, syncs the What's New release notes, then exec's the
+Next server. **Do not set a Custom
 Start Command on the Railway service** — it overrides the Dockerfile CMD and
 breaks this sequence.
 
@@ -152,6 +154,18 @@ Required env vars on the app service (in addition to platform-injected `PORT`):
 
 Railway's "Networking → Public Networking → Target Port" must be **3000** (the
 Dockerfile EXPOSEs it).
+
+### Release notes (in-app What's New, STD-REL-001)
+
+Every iOS release ships a What's New note. Publish it by **appending an entry to
+`content/release-notes.json` in the release PR** — slug `ios-<marketing
+version>`, plain-language user-facing copy, no ticket refs, no emoji, no "AI"
+wording. `npm run build` validates the file (`prebuild`), and every boot upserts
+it by slug into `release_notes` (`scripts/sync-release-notes.js`, fail-soft).
+The app reads `GET /api/release-notes/latest?platform=ios` at launch and shows
+the newest active entry once per slug. Fix a typo by editing the entry (same
+slug, no re-show); retract with `"active": false`. **Never write that table with
+SQL** — a row with no entry in the file is an audit finding.
 
 ## Architecture
 

@@ -87,13 +87,21 @@ marketplace_listings(id PK, user_id FK, channel CHECK('reverb','ebay'),
 box_presets(id PK, user_id FK, name, weight_lb, length_in, width_in,
             height_in, created_at)
 
+-- In-app What's New notes (migration 026 — STD-REL-001 / VLT-57). Written ONLY by
+-- scripts/sync-release-notes.js from content/release-notes.json on boot:
+release_notes(id PK, slug UNIQUE, platform CHECK('ios','android'), title, body,
+              active, position,   -- index in the content file; highest active wins
+              created_at, updated_at)
+
 -- Migration tracking
 schema_migrations(filename PK, applied_at)
 ```
 
 Image FK columns diverge by module (`guitar_item_id`, `watch_item_id`, `auto_id`, `iod_id`) — captured in `CollectionConfig.imageFkColumn`. `specs` is an ordered JSONB array of `{ label, value, source: "ai" | "manual" }`; AI regeneration replaces only `source='ai'` rows.
 
-**Migrations:** `db/migrations/*.sql` (001–025) — tracked in `schema_migrations` by filename. Applied transactionally on container boot via `scripts/migrate.js` (Dockerfile CMD: `node scripts/migrate.js && exec node server.js`).
+**Migrations:** `db/migrations/*.sql` (001–026) — tracked in `schema_migrations` by filename. Applied transactionally on container boot via `scripts/migrate.js` (Dockerfile CMD: `node scripts/migrate.js && node scripts/sync-release-notes.js && exec node server.js`).
+
+**Release notes pipeline (STD-REL-001):** `content/release-notes.json` is the source of truth for the iOS What's New sheet — one entry per native release `{slug, platform, title, body, active}`, appended at the end. `scripts/check-release-notes.js` validates it as the `prebuild` step (required fields, unique slugs, newest entry active, no emoji / "AI" wording / ticket refs, block headings ≤ 40 chars), so a bad file fails `ci` and the image build. `scripts/sync-release-notes.js` upserts every entry by slug on each boot, after migrations; it is fail-soft (always exits 0) and never deletes rows — rows missing from the file are logged as a warning. Never write `release_notes` by hand.
 
 ## API
 
@@ -109,6 +117,7 @@ Auth legend: **Session/Bearer** = `getApiSession(request)` (`lib/api-auth.ts`; a
 | POST | `/api/auth/social` (Apple/Google ID token, JWKS-verified) | Open (ID token verified) | `app/api/auth/social/route.ts` |
 | POST | `/api/auth/refresh` (rotates; replay revokes chain) | Open (refresh in body) | `app/api/auth/refresh/route.ts` |
 | GET | `/api/status` (Bearer probe → session user) | Bearer (handler-checked) | `app/api/status/route.ts` |
+| GET | `/api/release-notes/latest?platform=ios` (newest active What's New entry → `{slug, title, body}`; 204 when none; 400 on unknown platform) | Session/Bearer | `app/api/release-notes/latest/route.ts` |
 | GET | `/api/aasa` (AASA for Universal Links; rewritten from `/.well-known/apple-app-site-association`) | Open | `app/api/aasa/route.ts` |
 | GET / POST | `/api/{guitars,watches,automobiles,iod}` | Session/Bearer, `user_id`-scoped | `app/api/{module}/route.ts` (factory re-export) |
 | GET / PATCH / DELETE | `/api/{module}/[id]` | Session/Bearer + ownership | `app/api/{module}/[id]/route.ts` (factory re-export) |
@@ -198,7 +207,8 @@ Auth legend: **Session/Bearer** = `getApiSession(request)` (`lib/api-auth.ts`; a
 | Paperwork (Insurance schedule + PDF) | `app/paperwork/insurance/page.tsx`, `lib/paperwork/insurance-pdf.tsx`, `components/InsuranceScheduleView.tsx` |
 | Universal Links (AASA) | `app/api/aasa/route.ts`, `next.config.mjs` (rewrite) |
 | Public privacy policy | `app/privacy/page.tsx` |
-| Database migrations | `db/migrations/*.sql` (001–025) |
+| Database migrations | `db/migrations/*.sql` (001–026) |
+| What's New content | `content/release-notes.json`, `scripts/{release-notes-content,check-release-notes,sync-release-notes}.js` |
 | Auth setup (browser) | `lib/auth.ts`, `middleware.ts`, `app/api/auth/[...nextauth]/route.ts`, `app/api/auth/register/route.ts` |
 | Form shell (Add/Edit modals) | `lib/hooks/use{ImageUpload,EditImageList}.ts`, `components/forms/*` |
 | Tests | (none — `tsc --noEmit` + `next build` is the manual gate) |

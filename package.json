@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/check-release-notes.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:migrate": "node scripts/migrate.js"
+    "db:migrate": "node scripts/migrate.js",
+    "release-notes:sync": "node scripts/sync-release-notes.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -1,0 +1,12 @@
+{
+  "$comment": "Source of truth for the in-app What's New notes (STD-REL-001). One object per native release, APPENDED AT THE END: the app is shown the LAST active entry for its platform. scripts/sync-release-notes.js upserts every entry by slug into the release_notes table on each deploy (Dockerfile CMD, after migrations); scripts/check-release-notes.js validates this file during `npm run build`. Edit an existing entry (same slug) to fix copy without re-showing it; a new slug shows the sheet once more. To retract an entry set active to false; removing it from this file does NOT delete the row. Slug convention: <platform>-<marketing version>, e.g. ios-0.1.0. Copy rules: user-facing changes in plain language, no ticket references, no emoji, no AI wording (NIU-18). Body: blocks separated by a blank line; a block's first line is its heading (40 characters max) when the block has more than one line.",
+  "entries": [
+    {
+      "slug": "ios-0.1.0",
+      "platform": "ios",
+      "title": "What's New in Vault 1",
+      "body": "Your whole collection in one place.\nTrack guitars, watches, automobiles and items of distinction side by side, with photos, condition and purchase details for every piece.\n\nKnow what your pieces are worth.\nGet market valuations backed by real comparable sales, and see how each value has changed over time.\n\nSee the big picture.\nThe portfolio chart shows what your whole collection is worth, and you can narrow it to a single category.\n\nSigned in and in sync.\nSign in with Apple, then pick up where you left off on the web at vault1.co.\n\nPlus a round of fixes: closing a form no longer throws away changes you have not saved, and close buttons are now labelled for VoiceOver.",
+      "active": true
+    }
+  ]
+}

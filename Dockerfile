@@ -43,6 +43,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # routes), so we have to copy them explicitly.
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/db ./db
+# The What's New content file the boot-time sync upserts (STD-REL-001 / VLT-57).
+COPY --from=builder --chown=nextjs:nodejs /app/content ./content
 
 USER nextjs
 
@@ -52,9 +54,11 @@ ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
 
-# Run migrations, then exec the Next server so SIGTERM from the platform
+# Run migrations, sync content/release-notes.json into release_notes (fail-soft:
+# it always exits 0, so release notes can never block a boot), then exec the
+# Next server so SIGTERM from the platform
 # (Railway, Fly, etc.) flows to Node directly and graceful shutdown works.
 # Migrations are idempotent via the schema_migrations tracker, so re-running
 # on every boot is safe. A platform can still override CMD via a custom
 # start command if they want migrate-only or server-only.
-CMD ["sh", "-c", "node scripts/migrate.js && exec node server.js"]
+CMD ["sh", "-c", "node scripts/migrate.js && node scripts/sync-release-notes.js && exec node server.js"]
