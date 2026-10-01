@@ -280,6 +280,8 @@ export async function GET(request: NextRequest) {
 
     // ── Activity: recent additions + valuations (all four collections) ──
     const activityRows = await query<{
+      item_id: string;
+      collection_type: string;
       event_type: string;
       event_date: string;
       title: string;
@@ -288,6 +290,8 @@ export async function GET(request: NextRequest) {
     }>(`
       (
         SELECT
+          gi.id                                          AS item_id,
+          'guitar'                                       AS collection_type,
           'added'                                        AS event_type,
           gi.created_at                                  AS event_date,
           gi.brand || ' ' || gi.model                   AS title,
@@ -301,6 +305,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          gi.id                                          AS item_id,
+          'guitar'                                       AS collection_type,
           gv.valuation_type || '_valuation'             AS event_type,
           gv.created_at                                  AS event_date,
           gi.brand || ' ' || gi.model                   AS title,
@@ -318,6 +324,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          wi.id                                          AS item_id,
+          'watch'                                        AS collection_type,
           'added'                                        AS event_type,
           wi.created_at                                  AS event_date,
           wi.brand || ' ' || wi.model                   AS title,
@@ -331,6 +339,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          wi.id                                          AS item_id,
+          'watch'                                        AS collection_type,
           wv.valuation_type || '_valuation'             AS event_type,
           wv.created_at                                  AS event_date,
           wi.brand || ' ' || wi.model                   AS title,
@@ -348,6 +358,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          a.id                                           AS item_id,
+          'auto'                                         AS collection_type,
           'added'                                        AS event_type,
           a.created_at                                   AS event_date,
           COALESCE(a.brand || ' ' || a.model, a.model, 'Vehicle') AS title,
@@ -361,6 +373,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          a.id                                           AS item_id,
+          'auto'                                         AS collection_type,
           av.valuation_type || '_valuation'             AS event_type,
           av.created_at                                  AS event_date,
           COALESCE(a.brand || ' ' || a.model, a.model, 'Vehicle') AS title,
@@ -378,6 +392,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          i.id                                           AS item_id,
+          'iod'                                          AS collection_type,
           'added'                                        AS event_type,
           i.created_at                                   AS event_date,
           i.short_description                            AS title,
@@ -391,6 +407,8 @@ export async function GET(request: NextRequest) {
       UNION ALL
       (
         SELECT
+          i.id                                           AS item_id,
+          'iod'                                          AS collection_type,
           iv.valuation_type || '_valuation'             AS event_type,
           iv.created_at                                  AS event_date,
           i.short_description                            AS title,
