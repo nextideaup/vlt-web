@@ -1,8 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton, SearchField, NoMatches } from "@/components/ListControls";
-import { matchesSearch } from "@/lib/listFilters";
+import { ClearAllButton, SearchField, NoMatches, FilterBar } from "@/components/ListControls";
+import { matchesSearch, matchesFilters, FILTER_KEYS } from "@/lib/listFilters";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -37,6 +37,7 @@ const LIST_CONFIG: ListStateConfig = {
   defaultDir: "desc",
   defaultView: "tiles",
   ascFields: DEFAULT_ASC_FIELDS,
+  filterKeys: FILTER_KEYS,
 };
 
 // STD-TBL-005: what the search box matches (substring, case-insensitive).
@@ -72,8 +73,8 @@ export default function WatchCategoryPage() {
   // STD-TBL-005: rows the search leaves visible. Sorting, select-all and the
   // bulk bar all work on these, never on rows the user can't see.
   const visibleItems = useMemo(
-    () => items.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
-    [items, list.q],
+    () => items.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS) && matchesFilters(i, list.filters)),
+    [items, list.q, list.filters],
   );
 
   // Drop selections that are no longer visible (after a bulk action, or when
@@ -267,10 +268,11 @@ export default function WatchCategoryPage() {
         </div>
       </div>
 
-      {/* Search (STD-TBL-005) */}
+      {/* Search (STD-TBL-005) + filters (STD-TBL-004) */}
       {!loading && items.length > 0 && (
-        <div className="mb-3">
+        <div className="mb-3 space-y-3">
           <SearchField value={list.q} onChange={list.setQ} placeholder={SEARCH_PLACEHOLDER} label="Search watches" />
+          <FilterBar filters={list.filters} setFilter={list.setFilter} />
         </div>
       )}
 
