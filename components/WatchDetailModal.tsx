@@ -240,6 +240,7 @@ export default function WatchDetailModal({
               Delete
             </button>
             <button
+              aria-label="Close"
               onClick={onClose}
               className="w-9 h-9 rounded-xl hover:bg-surface-3 text-text-muted hover:text-text transition-colors flex items-center justify-center"
             >
@@ -501,7 +502,7 @@ export default function WatchDetailModal({
                     <p className="text-2xl font-bold text-text">{formatPrice(aiResult.suggested_price)}</p>
                     <p className="text-xs text-text-muted">Range: {formatPrice(aiResult.price_low)} – {formatPrice(aiResult.price_high)}</p>
                   </div>
-                  <button onClick={() => setValuationStep("idle")} className="text-text-dim hover:text-text">
+                  <button aria-label="Close" onClick={() => setValuationStep("idle")} className="text-text-dim hover:text-text">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -638,6 +639,7 @@ export default function WatchDetailModal({
       >
         {/* Close */}
         <button
+          aria-label="Close"
           className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
           onClick={() => setLightboxOpen(false)}
         >

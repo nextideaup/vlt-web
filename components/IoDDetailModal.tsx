@@ -219,6 +219,7 @@ export default function IoDDetailModal({
                 {deleting ? "Deleting..." : "Delete"}
               </button>
               <button
+                aria-label="Close"
                 onClick={onClose}
                 className="w-9 h-9 rounded-xl hover:bg-surface-3 text-text-muted hover:text-text transition-colors flex items-center justify-center"
               >
@@ -588,6 +589,7 @@ export default function IoDDetailModal({
             </>
           )}
           <button
+            aria-label="Close"
             onClick={() => setLightboxOpen(false)}
             className="absolute top-4 right-4 w-10 h-10 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center"
           >

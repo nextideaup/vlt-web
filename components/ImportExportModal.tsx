@@ -202,6 +202,7 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
             <p className="text-xs text-text-muted mt-0.5">Backup or restore your vault collections</p>
           </div>
           <button
+            aria-label="Close"
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-text-dim hover:text-text hover:bg-surface-2 transition-colors"
           >

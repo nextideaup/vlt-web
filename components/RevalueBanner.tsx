@@ -83,6 +83,7 @@ export default function RevalueBanner() {
 
             {!state.isRunning && (
               <button
+                aria-label="Dismiss"
                 onClick={dismiss}
                 className="w-6 h-6 rounded-lg hover:bg-surface-3 text-text-dim hover:text-text transition-colors flex items-center justify-center flex-shrink-0"
               >
