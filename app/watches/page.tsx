@@ -1,5 +1,7 @@
 "use client";
 
+import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
+import { ClearAllButton } from "@/components/ListControls";
 import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -39,6 +41,12 @@ const DEFAULT_ASC_FIELDS = new Set(["brand", "model", "dial_color", "short_descr
 
 const PAGE_SIZE = 15;
 
+const LIST_CONFIG: ListStateConfig = {
+  defaultSort: "brand",
+  defaultDir: "asc",
+  ascFields: DEFAULT_ASC_FIELDS,
+};
+
 export default function WatchesPage() {
   const { hideValues } = useHideValues();
   const fmt = (n: number | null | undefined) => hideValues ? "$•••" : fmtRaw(n);
@@ -54,20 +62,14 @@ export default function WatchesPage() {
 
   // Sort state — shared across all category sections.
   // Default: Brand ASC with Year ASC as a within-brand tiebreak.
-  const [sortBy, setSortBy] = useState<string>("brand");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // STD-STATE-001: sort lives in the URL, mirrored per path (lib/hooks/useListState).
+  const list = useListState(LIST_CONFIG);
+  const { sort: sortBy, dir: sortDir, toggleSort: listToggleSort } = list;
 
   const toggleSort = useCallback((field: string) => {
-    setSortBy((prev) => {
-      if (prev === field) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
-      setSortDir(DEFAULT_ASC_FIELDS.has(field) ? "asc" : "desc");
-      return field;
-    });
+    listToggleSort(field);
     setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 });
-  }, []);
+  }, [listToggleSort]);
 
   const sortedItems = useMemo(() => {
     const copy = [...allItems];
@@ -116,11 +118,16 @@ export default function WatchesPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-3xl font-bold text-text mb-1">Watches</h1>
         <p className="text-text-muted text-sm">
           {loading ? "Loading…" : `${totalItems} item${totalItems !== 1 ? "s" : ""} across all categories`}
         </p>
+      </div>
+
+      {/* List controls */}
+      <div className="flex items-center justify-end gap-2 mb-6">
+        <ClearAllButton onClick={() => { list.reset(); setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 }); }} disabled={!list.canReset} />
       </div>
 
       {/* Sections */}

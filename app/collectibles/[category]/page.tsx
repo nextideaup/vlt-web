@@ -1,5 +1,7 @@
 "use client";
 
+import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
+import { ClearAllButton } from "@/components/ListControls";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -19,12 +21,17 @@ import BulkActionBar from "@/components/BulkActionBar";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
 type SortField = string;
-type SortDir = "asc" | "desc";
-type ViewMode = "tiles" | "list";
 
 const DEFAULT_ASC_FIELDS = new Set([
   "brand", "short_description", "item_type", "category", "condition",
 ]);
+
+const LIST_CONFIG: ListStateConfig = {
+  defaultSort: "date",
+  defaultDir: "desc",
+  defaultView: "tiles",
+  ascFields: DEFAULT_ASC_FIELDS,
+};
 
 export default function IoDCategoryPage() {
   const params = useParams();
@@ -36,9 +43,9 @@ export default function IoDCategoryPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [valuationItem, setValuationItem] = useState<IoDItem | null>(null);
 
-  const [sortBy, setSortBy] = useState<SortField>("date");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [viewMode, setViewMode] = useState<ViewMode>("tiles");
+  // STD-STATE-001: sort + view mode live in the URL, mirrored per path (lib/hooks/useListState).
+  const list = useListState(LIST_CONFIG);
+  const { sort: sortBy, dir: sortDir, view: viewMode, setView: setViewMode, toggleSort } = list;
   // CUR-6: bulk-select state.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -107,16 +114,6 @@ export default function IoDCategoryPage() {
     return copy;
   }, [items, sortBy, sortDir]);
 
-  const toggleSort = useCallback((field: SortField) => {
-    setSortBy((prev) => {
-      if (prev === field) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
-      setSortDir(DEFAULT_ASC_FIELDS.has(field) ? "asc" : "desc");
-      return field;
-    });
-  }, []);
 
   const handleItemAdded = useCallback((newItem: IoDItem, offerValuation?: boolean) => {
     setItems((prev) => [newItem, ...prev]);
@@ -229,6 +226,8 @@ export default function IoDCategoryPage() {
             <SortButton field="date" label="Date Added" />
             <SortButton field="brand" label="Brand" />
             <SortButton field="value" label="Value" />
+            <span className="ml-2" />
+            <ClearAllButton onClick={list.reset} disabled={!list.canReset} />
           </div>
 
           <div className="flex items-center gap-1 bg-surface-2 border border-border rounded-xl p-1">
