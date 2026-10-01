@@ -138,6 +138,12 @@ export default function LoginPage() {
             Register
           </Link>
         </p>
+
+        <p className="text-center text-xs text-text-muted mt-4">
+          <Link href="/privacy" className="hover:text-text-dim hover:underline">
+            Privacy
+          </Link>
+        </p>
       </div>
     </div>
   );
