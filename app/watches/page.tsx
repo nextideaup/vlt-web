@@ -4,8 +4,9 @@ import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { itemHref } from "@/lib/itemRoutes";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import { WatchItem, WatchCategory, WATCH_CATEGORY_LABELS, WATCH_CATEGORIES, CONDITION_COLORS } from "@/lib/types";
-import WatchDetailModal from "@/components/WatchDetailModal";
 import SortableHeader from "@/components/forms/SortableHeader";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
@@ -42,8 +43,8 @@ export default function WatchesPage() {
   const { hideValues } = useHideValues();
   const fmt = (n: number | null | undefined) => hideValues ? "$•••" : fmtRaw(n);
   const [allItems, setAllItems] = useState<WatchItem[]>([]);
+  const openRow = useRowLink();
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<WatchItem | null>(null);
   const [pages, setPages] = useState<Record<WatchCategory, number>>({
     "luxury-watches": 0,
     "sport-watches": 0,
@@ -107,38 +108,8 @@ export default function WatchesPage() {
     fetchData();
   }, []);
 
-  const handleItemDeleted = useCallback((id: string) => {
-    setAllItems((prev) => prev.filter((item) => item.id !== id));
-    setSelectedItem(null);
-  }, []);
 
-  const handleItemUpdated = useCallback((updated: WatchItem) => {
-    setAllItems((prev) =>
-      prev.map((item) =>
-        item.id === updated.id
-          ? {
-              ...updated,
-              latest_ai_price: item.latest_ai_price,
-              latest_ai_price_date: item.latest_ai_price_date,
-              latest_user_price: item.latest_user_price,
-              latest_user_price_date: item.latest_user_price_date,
-            }
-          : item
-      )
-    );
-    setSelectedItem((prev) => (prev?.id === updated.id ? updated : prev));
-  }, []);
 
-  const handleValuationSaved = useCallback((price: number, type: "ai" | "user") => {
-    if (!selectedItem) return;
-    setAllItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== selectedItem.id) return item;
-        if (type === "ai") return { ...item, latest_ai_price: price, latest_ai_price_date: new Date().toISOString() };
-        return { ...item, latest_user_price: price, latest_user_price_date: new Date().toISOString() };
-      })
-    );
-  }, [selectedItem]);
 
   const totalItems = allItems.length;
 
@@ -228,14 +199,14 @@ export default function WatchesPage() {
                         pageItems.map((item, idx) => (
                           <tr
                             key={item.id}
-                            onClick={() => setSelectedItem(item)}
+                            onClick={(e) => openRow(e, itemHref("watches", item.id))}
                             className={`cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                               idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                             }`}
                           >
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.year ?? "—"}</td>
                             <td className="px-4 py-3 text-text font-medium whitespace-nowrap">{item.brand}</td>
-                            <td className="px-4 py-3 text-text whitespace-nowrap">{item.model}</td>
+                            <td className="px-4 py-3 text-text whitespace-nowrap"><Link href={itemHref("watches", item.id)} className="hover:text-accent hover:underline underline-offset-2">{item.model}</Link></td>
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.dial_color || "—"}</td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${CONDITION_COLORS[item.condition]}`}>
@@ -320,16 +291,6 @@ export default function WatchesPage() {
             );
           })}
         </div>
-      )}
-
-      {selectedItem && (
-        <WatchDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleItemDeleted}
-          onValuationSaved={handleValuationSaved}
-          onItemUpdated={handleItemUpdated}
-        />
       )}
     </div>
   );

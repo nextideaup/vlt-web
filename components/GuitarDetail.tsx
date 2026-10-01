@@ -1,21 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { WatchItem, WatchImage, WatchValuation, ComparableSale, CONDITION_COLORS, WATCH_CATEGORY_LABELS } from "@/lib/types";
+import { GuitarItem, GuitarImage, GuitarValuation, ComparableSale, CONDITION_COLORS, CATEGORY_LABELS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
-import EditWatchModal from "@/components/EditWatchModal";
+import EditItemModal from "@/components/EditItemModal";
 import InsuranceValueRow from "@/components/InsuranceValueRow";
 import SpecsSection from "@/components/forms/SpecsSection";
 import ListForSaleSection from "@/components/ListForSaleSection";
-import { watchConfig } from "@/lib/collections/watch";
+import { guitarConfig } from "@/lib/collections/guitar";
 import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
-interface WatchDetailModalProps {
-  item: WatchItem;
-  onClose: () => void;
+interface GuitarDetailProps {
+  item: GuitarItem;
   onDelete: (id: string) => void;
   onValuationSaved?: (price: number, type: "ai" | "user") => void;
-  onItemUpdated?: (item: WatchItem) => void;
+  onItemUpdated?: (item: GuitarItem) => void;
 }
 
 type ValuationStep = "idle" | "loading" | "results" | "error" | "manual";
@@ -28,13 +27,12 @@ interface AIResult {
   analysis: string;
 }
 
-export default function WatchDetailModal({
+export default function GuitarDetail({
   item,
-  onClose,
   onDelete,
   onValuationSaved,
   onItemUpdated,
-}: WatchDetailModalProps) {
+}: GuitarDetailProps) {
   const { hideValues } = useHideValues();
   const confirmDialog = useConfirm();
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -45,7 +43,7 @@ export default function WatchDetailModal({
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Valuations state
-  const [valuations, setValuations] = useState<WatchValuation[]>([]);
+  const [valuations, setValuations] = useState<GuitarValuation[]>([]);
   const [valuationsLoaded, setValuationsLoaded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [valuationStep, setValuationStep] = useState<ValuationStep>("idle");
@@ -55,7 +53,7 @@ export default function WatchDetailModal({
   const [manualNotes, setManualNotes] = useState("");
   const [savingManual, setSavingManual] = useState(false);
 
-  const images: WatchImage[] = item.images ?? [];
+  const images: GuitarImage[] = item.images ?? [];
   const activeImage = images[activeImageIndex];
 
   const openLightbox = (index: number) => {
@@ -85,7 +83,7 @@ export default function WatchDetailModal({
   useEffect(() => {
     async function loadValuations() {
       try {
-        const res = await fetch(`/api/watches/${item.id}/valuations`);
+        const res = await fetch(`/api/guitars/${item.id}/valuations`);
         if (res.ok) {
           const data = await res.json();
           setValuations(data);
@@ -106,10 +104,9 @@ export default function WatchDetailModal({
     if (!(await confirmDialog(permanentDeleteOptions(`"${item.brand} ${item.model}"`)))) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/watches/${item.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/guitars/${item.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       onDelete(item.id);
-      onClose();
     } catch (err) {
       console.error(err);
       alert("Failed to delete item.");
@@ -121,7 +118,7 @@ export default function WatchDetailModal({
     setValuationStep("loading");
     setAiError("");
     try {
-      const res = await fetch(`/api/watches/${item.id}/value`, { method: "POST" });
+      const res = await fetch(`/api/guitars/${item.id}/value`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Valuation failed");
@@ -142,13 +139,13 @@ export default function WatchDetailModal({
     if (!manualPrice || isNaN(price) || price <= 0) return;
     setSavingManual(true);
     try {
-      const res = await fetch(`/api/watches/${item.id}/valuations`, {
+      const res = await fetch(`/api/guitars/${item.id}/valuations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ price, notes: manualNotes || null }),
       });
       if (!res.ok) throw new Error("Failed to save");
-      const saved: WatchValuation = await res.json();
+      const saved: GuitarValuation = await res.json();
       setValuations((prev) => [saved, ...prev]);
       setValuationStep("idle");
       setManualPrice("");
@@ -189,27 +186,22 @@ export default function WatchDetailModal({
 
   return (
     <>
-    <div
-      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="modal-content bg-surface border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+    <section
+        className="bg-surface border border-border rounded-2xl w-full"
+        aria-labelledby="item-detail-title"
       >
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-5 border-b border-border">
           <div>
             <div className="flex items-center gap-2 text-sm text-text-muted mb-1">
-              <span>{WATCH_CATEGORY_LABELS[item.category]}</span>
+              <span>{CATEGORY_LABELS[item.category]}</span>
             </div>
-            <h2 className="text-2xl font-bold text-text">
+            <h1 id="item-detail-title" className="text-2xl font-bold text-text">
               {[item.year, item.brand, item.model].filter(Boolean).join(" ")}
-            </h2>
-            {(item.dial_color || item.short_description) && (
+            </h1>
+            {(item.color_finish || item.short_description) && (
               <p className="text-text-muted text-sm mt-0.5">
-                {[item.dial_color, item.short_description].filter(Boolean).join(" · ")}
+                {[item.color_finish, item.short_description].filter(Boolean).join(" · ")}
               </p>
             )}
           </div>
@@ -238,15 +230,6 @@ export default function WatchDetailModal({
                 </svg>
               )}
               Delete
-            </button>
-            <button
-              aria-label="Close"
-              onClick={onClose}
-              className="w-9 h-9 rounded-xl hover:bg-surface-3 text-text-muted hover:text-text transition-colors flex items-center justify-center"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
             </button>
           </div>
         </div>
@@ -277,7 +260,7 @@ export default function WatchDetailModal({
                 ) : (
                   <div className="image-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2">
                     <svg className="w-16 h-16 text-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
                     </svg>
                     <p className="text-sm text-text-dim">No image</p>
                   </div>
@@ -336,14 +319,7 @@ export default function WatchDetailModal({
 
               <div className="space-y-3">
                 {item.year && <DetailRow label="Year" value={String(item.year)} />}
-                {item.reference_number && <DetailRow label="Reference" value={item.reference_number} mono />}
-                {item.case_diameter && <DetailRow label="Case Diameter" value={item.case_diameter} />}
                 {item.serial_number && <DetailRow label="Serial Number" value={item.serial_number} mono />}
-                {item.dial_color && <DetailRow label="Dial Color" value={item.dial_color} />}
-                {item.movement && <DetailRow label="Movement" value={item.movement} />}
-                {item.case_material && <DetailRow label="Case Material" value={item.case_material} />}
-                {item.bracelet_material && <DetailRow label="Bracelet" value={item.bracelet_material} />}
-                {item.country_of_manufacture && <DetailRow label="Made In" value={item.country_of_manufacture} />}
                 {item.purchase_price != null && (
                   <DetailRow label="Purchase Price" value={formatPrice(item.purchase_price) ?? ""} />
                 )}
@@ -377,11 +353,11 @@ export default function WatchDetailModal({
           {/* ── Specs Section ── */}
           <div className="mt-6 pt-6 border-t border-border">
             <SpecsSection
-              module="watches"
+              module="guitars"
               itemId={item.id}
               specs={item.specs}
               specsUpdatedAt={item.specs_updated_at}
-              template={watchConfig.specTemplate}
+              template={guitarConfig.specTemplate}
               onUpdated={(specs, specs_updated_at) =>
                 onItemUpdated?.({ ...item, specs, specs_updated_at })
               }
@@ -390,7 +366,7 @@ export default function WatchDetailModal({
 
           {/* ── Sell Section ── */}
           <div className="mt-6 pt-6 border-t border-border">
-            <ListForSaleSection module="watches" itemId={item.id} condition={item.condition} initialIntro={item.listing_intro} initialFooter={item.listing_footer} onIntroSaved={(v) => onItemUpdated?.({ ...item, listing_intro: v })} onFooterSaved={(v) => onItemUpdated?.({ ...item, listing_footer: v })} initialPackage={{ weight: item.package_weight_lb, length: item.package_length_in, width: item.package_width_in, height: item.package_height_in }} onPackageSaved={(p) => onItemUpdated?.({ ...item, package_weight_lb: p.weight, package_length_in: p.length, package_width_in: p.width, package_height_in: p.height })} initialSellPrice={item.listing_price} userPrice={item.latest_user_price} aiPrice={item.latest_ai_price} onSellPriceSaved={(v) => onItemUpdated?.({ ...item, listing_price: v })} />
+            <ListForSaleSection module="guitars" itemId={item.id} condition={item.condition} initialIntro={item.listing_intro} initialFooter={item.listing_footer} onIntroSaved={(v) => onItemUpdated?.({ ...item, listing_intro: v })} onFooterSaved={(v) => onItemUpdated?.({ ...item, listing_footer: v })} initialPackage={{ weight: item.package_weight_lb, length: item.package_length_in, width: item.package_width_in, height: item.package_height_in }} onPackageSaved={(p) => onItemUpdated?.({ ...item, package_weight_lb: p.weight, package_length_in: p.length, package_width_in: p.width, package_height_in: p.height })} initialSellPrice={item.listing_price} userPrice={item.latest_user_price} aiPrice={item.latest_ai_price} onSellPriceSaved={(v) => onItemUpdated?.({ ...item, listing_price: v })} />
           </div>
 
           {/* ── Valuation Section ── */}
@@ -467,7 +443,7 @@ export default function WatchDetailModal({
             {/* Insurance value (CUR-3) — renders only when item.insure is true. */}
             <InsuranceValueRow
               item={item}
-              module="watches"
+              module="guitars"
               onComputed={(fields) => onItemUpdated?.({ ...item, ...fields })}
             />
 
@@ -475,7 +451,7 @@ export default function WatchDetailModal({
             {valuationStep === "loading" && (
               <div className="bg-surface-2 rounded-xl p-5 border border-border text-center">
                 <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-3" />
-                <p className="text-sm text-text">Searching Chrono24, WatchBox & eBay for comparable watch sales…</p>
+                <p className="text-sm text-text">Searching eBay & Reverb for comparable sales…</p>
                 <p className="text-xs text-text-dim mt-1">This may take 15–30 seconds</p>
               </div>
             )}
@@ -518,8 +494,6 @@ export default function WatchDetailModal({
                           <span className={`text-xs font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
                             sale.source === "eBay"
                               ? "bg-yellow-500/10 text-yellow-400"
-                              : sale.source === "Chrono24"
-                              ? "bg-blue-500/10 text-blue-400"
                               : "bg-teal-500/10 text-teal-400"
                           }`}>{sale.source}</span>
                           {sale.listing_type === "for_sale" ? (
@@ -617,11 +591,10 @@ export default function WatchDetailModal({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </section>
 
     {showEditModal && (
-      <EditWatchModal
+      <EditItemModal
         item={{ ...item, images: images }}
         onClose={() => setShowEditModal(false)}
         onItemUpdated={(updated) => {

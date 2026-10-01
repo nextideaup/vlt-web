@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { itemHref } from "@/lib/itemRoutes";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import { GuitarItem, GuitarCategory, CATEGORY_LABELS, GUITAR_CATEGORIES, CONDITION_COLORS } from "@/lib/types";
-import ItemDetailModal from "@/components/ItemDetailModal";
 import SortableHeader from "@/components/forms/SortableHeader";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
@@ -42,8 +43,8 @@ const PAGE_SIZE = 15;
 
 export default function GuitarsPage() {
   const [allItems, setAllItems] = useState<GuitarItem[]>([]);
+  const openRow = useRowLink();
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<GuitarItem | null>(null);
   const [pages, setPages] = useState<Record<GuitarCategory, number>>({
     "electric-guitars": 0,
     "acoustic-guitars": 0,
@@ -112,38 +113,8 @@ export default function GuitarsPage() {
     fetchData();
   }, []);
 
-  const handleItemDeleted = useCallback((id: string) => {
-    setAllItems((prev) => prev.filter((item) => item.id !== id));
-    setSelectedItem(null);
-  }, []);
 
-  const handleItemUpdated = useCallback((updated: GuitarItem) => {
-    setAllItems((prev) =>
-      prev.map((item) =>
-        item.id === updated.id
-          ? {
-              ...updated,
-              latest_ai_price: item.latest_ai_price,
-              latest_ai_price_date: item.latest_ai_price_date,
-              latest_user_price: item.latest_user_price,
-              latest_user_price_date: item.latest_user_price_date,
-            }
-          : item
-      )
-    );
-    setSelectedItem((prev) => (prev?.id === updated.id ? updated : prev));
-  }, []);
 
-  const handleValuationSaved = useCallback((price: number, type: "ai" | "user") => {
-    if (!selectedItem) return;
-    setAllItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== selectedItem.id) return item;
-        if (type === "ai") return { ...item, latest_ai_price: price, latest_ai_price_date: new Date().toISOString() };
-        return { ...item, latest_user_price: price, latest_user_price_date: new Date().toISOString() };
-      })
-    );
-  }, [selectedItem]);
 
   const totalItems = allItems.length;
 
@@ -234,14 +205,14 @@ export default function GuitarsPage() {
                         pageItems.map((item, idx) => (
                           <tr
                             key={item.id}
-                            onClick={() => setSelectedItem(item)}
+                            onClick={(e) => openRow(e, itemHref("guitars", item.id))}
                             className={`cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                               idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                             }`}
                           >
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.year ?? "—"}</td>
                             <td className="px-4 py-3 text-text font-medium whitespace-nowrap">{item.brand}</td>
-                            <td className="px-4 py-3 text-text whitespace-nowrap">{item.model}</td>
+                            <td className="px-4 py-3 text-text whitespace-nowrap"><Link href={itemHref("guitars", item.id)} className="hover:text-accent hover:underline underline-offset-2">{item.model}</Link></td>
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.color_finish || "—"}</td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${CONDITION_COLORS[item.condition]}`}>
@@ -326,16 +297,6 @@ export default function GuitarsPage() {
             );
           })}
         </div>
-      )}
-
-      {selectedItem && (
-        <ItemDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleItemDeleted}
-          onValuationSaved={handleValuationSaved}
-          onItemUpdated={handleItemUpdated}
-        />
       )}
     </div>
   );

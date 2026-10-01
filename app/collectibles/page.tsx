@@ -4,6 +4,8 @@ import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { itemHref } from "@/lib/itemRoutes";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import {
   IoDItem,
   IoDCategory,
@@ -11,7 +13,6 @@ import {
   IOD_CATEGORY_LABELS,
   CONDITION_COLORS,
 } from "@/lib/types";
-import IoDDetailModal from "@/components/IoDDetailModal";
 import SortableHeader from "@/components/forms/SortableHeader";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
@@ -40,8 +41,8 @@ export default function CollectiblesPage() {
   const { hideValues } = useHideValues();
   const fmt = (n: number | null | undefined) => hideValues ? "$•••" : fmtRaw(n);
   const [allItems, setAllItems] = useState<IoDItem[]>([]);
+  const openRow = useRowLink();
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<IoDItem | null>(null);
   const [pages, setPages] = useState<Record<IoDCategory, number>>({
     "fine-art": 0,
     memorabilia: 0,
@@ -97,17 +98,7 @@ export default function CollectiblesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleItemDeleted = useCallback((id: string) => {
-    setAllItems((prev) => prev.filter((item) => item.id !== id));
-    setSelectedItem(null);
-  }, []);
 
-  const handleItemUpdated = useCallback((updated: IoDItem) => {
-    setAllItems((prev) =>
-      prev.map((item) => item.id === updated.id ? { ...item, ...updated } : item)
-    );
-    setSelectedItem((prev) => (prev?.id === updated.id ? updated : prev));
-  }, []);
 
   const totalItems = allItems.length;
 
@@ -192,14 +183,14 @@ export default function CollectiblesPage() {
                         pageItems.map((item, idx) => (
                           <tr
                             key={item.id}
-                            onClick={() => setSelectedItem(item)}
+                            onClick={(e) => openRow(e, itemHref("collectibles", item.id))}
                             className={`cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                               idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                             }`}
                           >
                             <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.item_type || "—"}</td>
                             <td className="px-4 py-3 text-text font-medium whitespace-nowrap">{item.brand || "—"}</td>
-                            <td className="px-4 py-3 text-text max-w-[240px] truncate">{item.short_description}</td>
+                            <td className="px-4 py-3 text-text max-w-[240px] truncate"><Link href={itemHref("collectibles", item.id)} className="hover:text-accent hover:underline underline-offset-2">{item.short_description}</Link></td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               {item.condition ? (
                                 <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${CONDITION_COLORS[item.condition]}`}>
@@ -279,15 +270,6 @@ export default function CollectiblesPage() {
             );
           })}
         </div>
-      )}
-
-      {selectedItem && (
-        <IoDDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onDelete={handleItemDeleted}
-          onItemUpdated={handleItemUpdated}
-        />
       )}
     </div>
   );

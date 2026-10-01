@@ -1,20 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { IoDItem, CONDITION_COLORS, IOD_CATEGORY_LABELS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
 import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface IoDCardProps {
   item: IoDItem;
-  onClick: () => void;
+  /** Item detail page (STD-NAV-002) — the whole card links there. */
+  href: string;
   onDelete: (id: string) => void;
   // Bulk-select props (CUR-6). Both optional.
   isSelected?: boolean;
   onSelectChange?: (id: string, selected: boolean) => void;
 }
 
-export default function IoDCard({ item, onClick, onDelete, isSelected, onSelectChange }: IoDCardProps) {
+export default function IoDCard({ item, href, onDelete, isSelected, onSelectChange }: IoDCardProps) {
   const { hideValues } = useHideValues();
   const confirmDialog = useConfirm();
   const [deleting, setDeleting] = useState(false);
@@ -44,8 +46,13 @@ export default function IoDCard({ item, onClick, onDelete, isSelected, onSelectC
       className={`item-card group relative bg-surface border rounded-2xl overflow-hidden cursor-pointer hover:border-accent/40 hover:shadow-xl hover:shadow-black/30 transition-colors ${
         isSelected ? "border-accent ring-2 ring-accent/30" : "border-border"
       }`}
-      onClick={onClick}
     >
+      {/* Whole-card link to the item page; the select and delete controls sit above it (z-10). */}
+      <Link
+        href={href}
+        aria-label={item.short_description}
+        className="absolute inset-0 z-[5] rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      />
       {/* Bulk-select checkbox (CUR-6). */}
       {onSelectChange && (
         <button
@@ -120,7 +127,7 @@ export default function IoDCard({ item, onClick, onDelete, isSelected, onSelectC
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="absolute top-2 right-2 w-7 h-7 bg-black/60 backdrop-blur-sm hover:bg-red-600/80 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center justify-center"
+          className="absolute top-2 right-2 z-10 w-7 h-7 bg-black/60 backdrop-blur-sm hover:bg-red-600/80 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center justify-center"
           title="Delete item"
         >
           {deleting ? (

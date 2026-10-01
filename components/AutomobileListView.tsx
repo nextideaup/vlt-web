@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRowLink } from "@/lib/hooks/useRowLink";
 import { AutoItem, CONDITION_COLORS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
 import SelectionCheckbox from "@/components/SelectionCheckbox";
@@ -39,7 +41,8 @@ const COLUMNS: { label: string; field?: string; align?: "left" | "right" }[] = [
 
 interface AutomobileListViewProps {
   items: AutoItem[];
-  onItemClick: (item: AutoItem) => void;
+  /** Item detail page for a row (STD-NAV-002). */
+  itemHref: (item: AutoItem) => string;
   onDelete: (id: string) => void;
   selectedIds?: Set<string>;
   onSelectChange?: (id: string, selected: boolean) => void;
@@ -51,7 +54,7 @@ interface AutomobileListViewProps {
 
 export default function AutomobileListView({
   items,
-  onItemClick,
+  itemHref,
   selectedIds,
   onSelectChange,
   onSelectAllToggle,
@@ -60,6 +63,7 @@ export default function AutomobileListView({
   onSortToggle,
 }: AutomobileListViewProps) {
   const { hideValues } = useHideValues();
+  const openRow = useRowLink();
   const fmt = (price: number | null | undefined) => hideValues ? "$•••" : fmtRaw(price);
 
   const selectionEnabled = !!selectedIds && !!onSelectChange && !!onSelectAllToggle;
@@ -97,7 +101,7 @@ export default function AutomobileListView({
             return (
               <tr
                 key={item.id}
-                onClick={() => onItemClick(item)}
+                onClick={(e) => openRow(e, itemHref(item))}
                 className={`group cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors ${
                   isSelected ? "bg-accent/5" : idx % 2 === 0 ? "bg-surface" : "bg-surface/60"
                 }`}
@@ -113,7 +117,7 @@ export default function AutomobileListView({
                 <td className="px-4 py-3"><RowThumb images={item.images} /></td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.year ?? "—"}</td>
                 <td className="px-4 py-3 text-text font-medium whitespace-nowrap">{item.brand}</td>
-                <td className="px-4 py-3 text-text whitespace-nowrap">{item.model}</td>
+                <td className="px-4 py-3 text-text whitespace-nowrap"><Link href={itemHref(item)} className="hover:text-accent hover:underline underline-offset-2">{item.model}</Link></td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.trim_level || "—"}</td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.body_style || "—"}</td>
                 <td className="px-4 py-3 text-text-muted whitespace-nowrap">{item.color || "—"}</td>
