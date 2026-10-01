@@ -8,6 +8,7 @@ import InsuranceValueRow from "@/components/InsuranceValueRow";
 import SpecsSection from "@/components/forms/SpecsSection";
 import ListForSaleSection from "@/components/ListForSaleSection";
 import { watchConfig } from "@/lib/collections/watch";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface WatchDetailModalProps {
   item: WatchItem;
@@ -35,6 +36,7 @@ export default function WatchDetailModal({
   onItemUpdated,
 }: WatchDetailModalProps) {
   const { hideValues } = useHideValues();
+  const confirmDialog = useConfirm();
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [imgErrors, setImgErrors] = useState<Record<number, boolean>>({});
@@ -101,7 +103,7 @@ export default function WatchDetailModal({
   const latestUser = valuations.find((v) => v.valuation_type === "user");
 
   const handleDelete = async () => {
-    if (!confirm(`Delete "${item.brand} ${item.model}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${item.brand} ${item.model}"`)))) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/watches/${item.id}`, { method: "DELETE" });

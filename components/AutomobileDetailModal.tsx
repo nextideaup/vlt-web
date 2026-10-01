@@ -8,6 +8,7 @@ import InsuranceValueRow from "@/components/InsuranceValueRow";
 import SpecsSection from "@/components/forms/SpecsSection";
 import ListForSaleSection from "@/components/ListForSaleSection";
 import { autoConfig } from "@/lib/collections/auto";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface AutomobileDetailModalProps {
   item: AutoItem;
@@ -60,6 +61,7 @@ export default function AutomobileDetailModal({
   onItemUpdated,
 }: AutomobileDetailModalProps) {
   const { hideValues } = useHideValues();
+  const confirmDialog = useConfirm();
   const fmt = (v: number | null | undefined) => hideValues ? "$•••" : fmtRaw(v);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
@@ -127,7 +129,7 @@ export default function AutomobileDetailModal({
 
   const handleDelete = async () => {
     const title = [item.year, item.brand, item.model].filter(Boolean).join(" ");
-    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${title}"`)))) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/automobiles/${item.id}`, { method: "DELETE" });

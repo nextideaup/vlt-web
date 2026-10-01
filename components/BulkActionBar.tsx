@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 export type BulkActionModule = "guitars" | "watches" | "automobiles" | "iod";
 
@@ -60,6 +61,7 @@ export default function BulkActionBar({
   onSpecsGenerated,
 }: BulkActionBarProps) {
   const [busy, setBusy] = useState<null | "set_insure" | "archive" | "delete" | "generate_specs">(null);
+  const confirmDialog = useConfirm();
   const count = selectedIds.size;
 
   if (count === 0) return null;
@@ -92,7 +94,12 @@ export default function BulkActionBar({
   }
 
   async function runSpecsBatch() {
-    if (!confirm(`Generate specs with AI for ${count} item${count !== 1 ? "s" : ""}?\n\nEach item is researched via web search (a few seconds each). Manual specs you've already entered are preserved.`)) return;
+    const ok = await confirmDialog({
+      title: `Generate specs with AI for ${count} item${count !== 1 ? "s" : ""}?`,
+      body: "Each item is researched via web search (a few seconds each). Manual specs you've already entered are preserved.",
+      confirmLabel: "Generate specs",
+    });
+    if (!ok) return;
     setBusy("generate_specs");
     try {
       const res = await fetch(SPECS_BATCH_PATH[module], {
@@ -116,20 +123,30 @@ export default function BulkActionBar({
     }
   }
 
-  function confirmToggleInsurance() {
+  async function confirmToggleInsurance() {
     const verb = defaultInsureValue ? "set" : "remove";
     const dir = defaultInsureValue ? "ON" : "OFF";
-    if (!confirm(`Toggle insurance ${dir} for ${count} item${count !== 1 ? "s" : ""}?\n\nThis will ${verb} the "Include in insurance schedule" flag.`)) return;
+    const ok = await confirmDialog({
+      title: `Toggle insurance ${dir} for ${count} item${count !== 1 ? "s" : ""}?`,
+      body: `This will ${verb} the "Include in insurance schedule" flag.`,
+      confirmLabel: `Insurance ${dir}`,
+    });
+    if (!ok) return;
     void runAction("set_insure", defaultInsureValue);
   }
 
-  function confirmArchive() {
-    if (!confirm(`Archive ${count} item${count !== 1 ? "s" : ""}? They will be hidden from lists, dashboard, and insurance valuation runs but kept for export and re-import.`)) return;
+  async function confirmArchive() {
+    const ok = await confirmDialog({
+      title: `Archive ${count} item${count !== 1 ? "s" : ""}?`,
+      body: "They will be hidden from lists, dashboard, and insurance valuation runs but kept for export and re-import.",
+      confirmLabel: "Archive",
+    });
+    if (!ok) return;
     void runAction("archive");
   }
 
-  function confirmDelete() {
-    if (!confirm(`Permanently delete ${count} item${count !== 1 ? "s" : ""}? This cannot be undone. Their images will also be removed.`)) return;
+  async function confirmDelete() {
+    if (!(await confirmDialog(permanentDeleteOptions(`${count} item${count !== 1 ? "s" : ""}`, "and their images")))) return;
     void runAction("delete");
   }
 

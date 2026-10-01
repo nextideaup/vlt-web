@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AutoPursuit, AUTO_SOURCES, PursuitStatus } from "@/lib/types";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface EditAutoPursuitModalProps {
   pursuit: AutoPursuit;
@@ -39,6 +40,7 @@ export default function EditAutoPursuitModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const confirmDialog = useConfirm();
   const [error, setError] = useState<string | null>(null);
 
   const needsLocation = form.sources.includes("facebook") || form.sources.includes("craigslist");
@@ -106,7 +108,8 @@ export default function EditAutoPursuitModal({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Are you sure you want to delete this pursuit? This cannot be undone.")) return;
+    const name = [pursuit.brand, pursuit.model].filter(Boolean).join(" ") || "Unnamed";
+    if (!(await confirmDialog(permanentDeleteOptions(`the pursuit "${name}"`)))) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/auto-pursuits/${pursuit.id}`, { method: "DELETE" });

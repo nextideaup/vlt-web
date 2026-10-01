@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IoDPursuit, IOD_SOURCES, PursuitStatus } from "@/lib/types";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface EditIoDPursuitModalProps {
   pursuit: IoDPursuit;
@@ -34,6 +35,7 @@ export default function EditIoDPursuitModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const confirmDialog = useConfirm();
   const [error, setError] = useState<string | null>(null);
 
   const handleChange = (
@@ -94,7 +96,9 @@ export default function EditIoDPursuitModal({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Are you sure you want to delete this pursuit? This cannot be undone.")) return;
+    const name =
+      [pursuit.brand, pursuit.item_type].filter(Boolean).join(" · ") || pursuit.description || "Unnamed";
+    if (!(await confirmDialog(permanentDeleteOptions(`the pursuit "${name}"`)))) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/iod-pursuits/${pursuit.id}`, { method: "DELETE" });

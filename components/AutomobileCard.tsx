@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AutoItem, CONDITION_COLORS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface AutomobileCardProps {
   item: AutoItem;
@@ -15,6 +16,7 @@ interface AutomobileCardProps {
 
 export default function AutomobileCard({ item, onClick, onDelete, isSelected, onSelectChange }: AutomobileCardProps) {
   const { hideValues } = useHideValues();
+  const confirmDialog = useConfirm();
   const [deleting, setDeleting] = useState(false);
   const [imgError, setImgError] = useState(false);
 
@@ -23,7 +25,7 @@ export default function AutomobileCard({ item, onClick, onDelete, isSelected, on
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete "${item.year ? item.year + " " : ""}${item.brand} ${item.model}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${[item.year, item.brand, item.model].filter(Boolean).join(" ")}"`)))) return;
 
     setDeleting(true);
     try {
