@@ -117,6 +117,7 @@ export default function ManageCollectionsModal({ onClose }: Props) {
               </p>
             </div>
             <button
+              aria-label="Close"
               onClick={onClose}
               className="text-text-dim hover:text-text transition-colors p-1"
             >

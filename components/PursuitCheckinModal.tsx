@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 export interface CheckinPursuit {
   id: string;
@@ -11,7 +11,13 @@ export interface CheckinPursuit {
 
 interface Props {
   pursuits: CheckinPursuit[];
-  /** Called with the updated pursuit objects so pages can sync state */
+  /**
+   * Called when the queue is finished with, carrying the answers given so
+   * far so pages can sync state. Also called by "Not now" (STD-NAV-004),
+   * which closes the modal for this page view with no API call: the answers
+   * already given are passed through, the rest of the queue is left
+   * untouched and will be asked again on a later visit.
+   */
   onComplete: (updates: { id: string; action: "snooze" | "dismiss" | "deactivate" }[]) => void;
 }
 
@@ -23,6 +29,24 @@ export default function PursuitCheckinModal({ pursuits, onComplete }: Props) {
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [updates, setUpdates] = useState<{ id: string; action: "snooze" | "dismiss" | "deactivate" }[]>([]);
+  const titleId = useId();
+
+  // "Not now": close for this page view without touching any pursuit.
+  const notNow = () => onComplete(updates);
+  const notNowRef = useRef(notNow);
+  notNowRef.current = notNow;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+
+  // Escape behaves like "Not now" (no state change), unless a response is
+  // in flight.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loadingRef.current) notNowRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const current = pursuits[index];
   if (!current) return null;
@@ -59,7 +83,12 @@ export default function PursuitCheckinModal({ pursuits, onComplete }: Props) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-md mx-4 bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 w-full max-w-md mx-4 bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden"
+      >
 
         {/* Gold accent bar */}
         <div className="h-1 w-full bg-gradient-to-r from-accent/60 via-accent to-accent/60" />
@@ -81,7 +110,7 @@ export default function PursuitCheckinModal({ pursuits, onComplete }: Props) {
           </div>
 
           {/* Heading */}
-          <h2 className="font-headline text-2xl text-text mb-1">
+          <h2 id={titleId} className="font-headline text-2xl text-text mb-1">
             Still on the hunt?
           </h2>
           <p className="text-text-dim text-sm mb-6">
@@ -113,6 +142,14 @@ export default function PursuitCheckinModal({ pursuits, onComplete }: Props) {
               className="w-full text-text-dim hover:text-text py-2.5 px-4 rounded-xl text-sm disabled:opacity-50 transition-colors"
             >
               No, stand down
+            </button>
+            <button
+              type="button"
+              onClick={notNow}
+              disabled={loading}
+              className="w-full text-text-dim hover:text-text underline-offset-4 hover:underline py-2 px-4 rounded-xl text-sm disabled:opacity-50 transition-colors"
+            >
+              Not now
             </button>
           </div>
         </div>

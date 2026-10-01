@@ -415,6 +415,7 @@ export default function WatchCSVImportModal({ defaultCategory, onClose, onImport
             </p>
           </div>
           <button
+            aria-label="Close"
             onClick={onClose}
             className="w-9 h-9 rounded-xl hover:bg-surface-3 text-text-muted hover:text-text transition-colors flex items-center justify-center"
           >

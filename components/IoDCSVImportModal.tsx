@@ -321,7 +321,7 @@ export default function IoDCSVImportModal({ defaultCategory, onClose, onImportCo
               {step === "done" && "Import complete"}
             </p>
           </div>
-          <button onClick={onClose}
+          <button aria-label="Close" onClick={onClose}
             className="w-9 h-9 rounded-xl hover:bg-surface-3 text-text-muted hover:text-text transition-colors flex items-center justify-center">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
