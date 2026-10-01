@@ -8,6 +8,7 @@ import InsuranceValueRow from "@/components/InsuranceValueRow";
 import SpecsSection from "@/components/forms/SpecsSection";
 import ListForSaleSection from "@/components/ListForSaleSection";
 import { iodConfig } from "@/lib/collections/iod";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface IoDDetailModalProps {
   item: IoDItem;
@@ -55,6 +56,7 @@ export default function IoDDetailModal({
   onItemUpdated,
 }: IoDDetailModalProps) {
   const { hideValues } = useHideValues();
+  const confirmDialog = useConfirm();
   const fmt = (v: number | null | undefined) => hideValues ? "$•••" : fmtRaw(v);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
@@ -121,7 +123,7 @@ export default function IoDDetailModal({
   const latestUser = valuations.find((v) => v.valuation_type === "user");
 
   const handleDelete = async () => {
-    if (!confirm(`Delete "${item.short_description}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${item.short_description}"`)))) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/iod/${item.id}`, { method: "DELETE" });

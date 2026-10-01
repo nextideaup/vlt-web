@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { WatchItem, CONDITION_COLORS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface WatchCardProps {
   item: WatchItem;
@@ -15,6 +16,7 @@ interface WatchCardProps {
 
 export default function WatchCard({ item, onClick, onDelete, isSelected, onSelectChange }: WatchCardProps) {
   const { hideValues } = useHideValues();
+  const confirmDialog = useConfirm();
   const [deleting, setDeleting] = useState(false);
   const [imgError, setImgError] = useState(false);
 
@@ -23,7 +25,7 @@ export default function WatchCard({ item, onClick, onDelete, isSelected, onSelec
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete "${item.brand} ${item.model}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${item.brand} ${item.model}"`)))) return;
 
     setDeleting(true);
     try {

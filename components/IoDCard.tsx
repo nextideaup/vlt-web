@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IoDItem, CONDITION_COLORS, IOD_CATEGORY_LABELS } from "@/lib/types";
 import { useHideValues } from "@/lib/HideValuesContext";
+import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 interface IoDCardProps {
   item: IoDItem;
@@ -15,6 +16,7 @@ interface IoDCardProps {
 
 export default function IoDCard({ item, onClick, onDelete, isSelected, onSelectChange }: IoDCardProps) {
   const { hideValues } = useHideValues();
+  const confirmDialog = useConfirm();
   const [deleting, setDeleting] = useState(false);
   const [imgError, setImgError] = useState(false);
 
@@ -23,7 +25,7 @@ export default function IoDCard({ item, onClick, onDelete, isSelected, onSelectC
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete "${item.short_description}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog(permanentDeleteOptions(`"${item.short_description}"`)))) return;
 
     setDeleting(true);
     try {
