@@ -215,9 +215,10 @@ objects.
   `useUserModules()` from `lib/UserModulesContext.tsx`. Always gate
   module-specific UI with `isEnabled("<module>")`.
 - Commits flow through PRs (`gh pr create` + `gh pr merge --squash --delete-branch`).
-  Auto-merge is allowed on the repo but has no CI gate yet, so it merges
-  immediately when the PR is mergeable. Direct pushes to main are technically
-  allowed but discouraged.
+  Auto-merge is allowed on the repo and waits for the two required checks
+  (`ci` and `work-item` — see "The two gates on every pull request" above).
+  Merging to `main` deploys to production. Direct pushes to main are
+  technically allowed but discouraged.
 
 ## Gotchas
 
@@ -468,13 +469,20 @@ curl -H "Authorization: Bearer $ACCESS" https://vault1.co/api/status
   UNION queue with status chips + score slider, approve/block actions.
   Gated by the `ADMIN_EMAILS` env-var allowlist (`lib/admin.ts`). Tab
   strip is scaffolded for the future "Public Gallery review" surface.
-- **CI gate for auto-merge** — done. `.github/workflows/ci.yml` runs
-  `npm ci` → `tsc --noEmit` → `next build` on every PR to `main` (job
-  name `build`). Branch protection on `main` requires the `build`
-  context: non-strict (no rebase requirement), no required reviews,
+- **CI gate for auto-merge** — done. There are no GitHub Actions
+  workflows (all removed in #70). The gate is the NextIdeaUp in-house
+  suite `ci`, registered for `nextideaup/vlt-web` in the NIU CI registry
+  and required since 2026-08-13. It runs
+  `npm ci --ignore-scripts && npx tsc --noEmit && npm run lint && npm run build`
+  on a NIU runner (linux pool, 900s timeout, p50 ~63s) and posts a `ci`
+  check on every PR. Branch protection on `main` requires `ci` and
+  `work-item`: non-strict (no rebase requirement), no required reviews,
   linear history, `enforce_admins: false` (admins can override in
-  emergencies), no force-push, no deletions. `gh pr merge --auto`
-  now actually waits for green.
+  emergencies), no force-push, no deletions. Read a run with
+  `gh pr checks <n> -R nextideaup/vlt-web`, or the NIU MCP `get_check`
+  (status, summary, failed tests); the suite definition is in
+  `describe_repo nextideaup/vlt-web`. Run the same four commands
+  locally before pushing.
 - **`purchase_date` field on Auto / IoD modals** — DB + API accept it; the
   Add/Edit modal field JSX doesn't expose it. ~80 lines across four files.
 - **Disable `claimOrphanedData`** — keep on while you're still bootstrapping
