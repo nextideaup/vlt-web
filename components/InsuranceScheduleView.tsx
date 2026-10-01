@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useHideValues } from "@/lib/HideValuesContext";
+import { itemHref, type ModuleSlug as ItemModuleSlug } from "@/lib/itemRoutes";
 
 type ModuleSlug = "guitars" | "watches" | "automobiles" | "iod";
 type InsuranceSource = "ai" | "alternate_from_user" | "user_override";
@@ -68,15 +69,14 @@ const SOURCE_BADGE: Record<InsuranceSource, string> = {
   user_override: "bg-sky-900/30 text-sky-300 border-sky-700/40",
 };
 
-// Map back to the item's detail page so the "Needs valuation" deep-link goes
-// somewhere useful. Each module has a category-level page; the user navigates
-// from there. (A future improvement could deep-link straight to the item
-// modal via a query param, but the category page is fine for v1.)
-const MODULE_BROWSE_PATH: Record<ModuleSlug, (category: string) => string> = {
-  guitars: (c) => `/guitars/${c}`,
-  watches: (c) => `/watches/${c}`,
-  automobiles: (c) => `/automobiles/${c}`,
-  iod: (c) => `/collectibles/${c}`,
+// Item references link to the item's page (STD-NAV-001): the item name, and
+// the "Needs valuation" prompt (valuing happens on the item page). The API's
+// module slug for collectibles is "iod"; its pages live under /collectibles.
+const ITEM_MODULE: Record<ModuleSlug, ItemModuleSlug> = {
+  guitars: "guitars",
+  watches: "watches",
+  automobiles: "automobiles",
+  iod: "collectibles",
 };
 
 function formatMoney(value: number | null): string {
@@ -292,9 +292,13 @@ export default function InsuranceScheduleView() {
                               <div className="w-10 h-10 rounded bg-surface-3 flex-shrink-0 print:hidden" />
                             )}
                             <div className="min-w-0">
-                              <div className="font-medium text-text print:text-black truncate">
+                              {/* Prints as plain text: black, no underline. */}
+                              <Link
+                                href={itemHref(ITEM_MODULE[item.module], item.id)}
+                                className="block font-medium text-text hover:text-accent hover:underline underline-offset-2 truncate print:text-black print:no-underline"
+                              >
                                 {[item.brand, item.model].filter(Boolean).join(" ") || "—"}
-                              </div>
+                              </Link>
                               {item.description && (
                                 <div className="text-xs text-text-muted truncate print:text-black">{item.description}</div>
                               )}
@@ -307,7 +311,7 @@ export default function InsuranceScheduleView() {
                         <td className="py-2 px-3 text-right print:py-1">
                           {item.needs_valuation ? (
                             <Link
-                              href={MODULE_BROWSE_PATH[item.module](item.category)}
+                              href={itemHref(ITEM_MODULE[item.module], item.id)}
                               className="inline-flex items-center text-xs text-amber-400 hover:text-amber-300 underline-offset-2 hover:underline print:text-black print:no-underline"
                             >
                               Needs valuation

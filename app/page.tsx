@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { itemHrefForType } from "@/lib/itemRoutes";
 import PortfolioChart from "@/components/PortfolioChart";
 import { useUserModules } from "@/lib/UserModulesContext";
@@ -176,6 +175,14 @@ function PhotoStack({ images }: { images: string[] }) {
   );
 }
 
+// A reference to an item (STD-NAV-001): a real link to its page. An unknown
+// collection type has no page, so it renders as plain text rather than a
+// control that does nothing when clicked.
+function ItemLink({ href, className, children }: { href: string | null; className?: string; children: ReactNode }) {
+  if (!href) return <div className={className}>{children}</div>;
+  return <Link href={href} className={className}>{children}</Link>;
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -184,21 +191,6 @@ export default function DashboardPage() {
   const { isEnabled } = useUserModules();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const [openError, setOpenError] = useState<string | null>(null);
-
-  // Item detail is a page now (STD-NAV-002, VLT-43): Recent Entry and the
-  // activity feed navigate to it. The page itself handles a missing item.
-  const openItem = useCallback((id: string, type: string) => {
-    setOpenError(null);
-    const href = itemHrefForType(type, id);
-    if (!href) {
-      setOpenError(`Couldn't open this item (unknown collection "${type}").`);
-      return;
-    }
-    router.push(href);
-  }, [router]);
-
   const loadDashboard = useCallback(async () => {
     try {
       const res = await fetch("/api/dashboard");
@@ -299,21 +291,15 @@ export default function DashboardPage() {
 
           {/* Recent Entry */}
           {data?.recent_item ? (
-            <div
-              className="bg-surface-3 rounded-lg p-5 group hover:bg-surface-container-highest transition-all duration-300 cursor-pointer"
-              onClick={() => openItem(data.recent_item!.id, data.recent_item!.collection_type)}
+            <ItemLink
+              href={itemHrefForType(data.recent_item.collection_type, data.recent_item.id)}
+              className="block bg-surface-3 rounded-lg p-5 group hover:bg-surface-container-highest transition-all duration-300"
             >
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-headline text-base text-text">Recent Entry</h4>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openItem(data.recent_item!.id, data.recent_item!.collection_type); }}
-                  className="text-accent opacity-60 hover:opacity-100 transition-opacity"
-                  title="Open detail"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                  </svg>
-                </button>
+                <svg className="w-4 h-4 text-accent opacity-60 group-hover:opacity-100 transition-opacity" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                </svg>
               </div>
               <div className="flex gap-4">
                 <div className="w-20 h-20 rounded bg-surface-container-lowest overflow-hidden flex-shrink-0">
@@ -351,7 +337,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </ItemLink>
           ) : (
             <div className="bg-surface-3 rounded-lg p-5 flex flex-col items-center justify-center text-center min-h-[140px]">
               <p className="text-text-dim text-sm">No items yet</p>
@@ -563,13 +549,12 @@ export default function DashboardPage() {
                         }`}>
                           {formatDate(event.event_date)}
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => openItem(event.item_id, event.collection_type)}
+                        <ItemLink
+                          href={itemHrefForType(event.collection_type, event.item_id)}
                           className="text-left text-text text-sm font-medium hover:text-accent hover:underline transition-colors"
                         >
                           {event.title}
-                        </button>
+                        </ItemLink>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <p className="text-text-dim text-xs">{event.subtitle}</p>
                           {event.value != null && Number(event.value) > 0 && (
@@ -602,19 +587,6 @@ export default function DashboardPage() {
 
     </div>
 
-    {/* Failed item open */}
-    {openError && (
-      <div role="alert" className="fixed bottom-6 right-6 z-50 max-w-sm flex items-start gap-3 bg-surface border border-red-400/40 rounded-xl shadow-2xl px-4 py-3">
-        <p className="text-red-400 text-sm flex-1">{openError}</p>
-        <button
-          onClick={() => setOpenError(null)}
-          className="text-text-dim hover:text-text text-sm leading-none"
-          aria-label="Dismiss"
-        >
-          ✕
-        </button>
-      </div>
-    )}
 
     </>
   );
