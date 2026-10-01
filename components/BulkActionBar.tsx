@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useConfirm, permanentDeleteOptions } from "@/components/forms/ConfirmDialog";
 
 export type BulkActionModule = "guitars" | "watches" | "automobiles" | "iod";
@@ -50,6 +50,23 @@ interface BulkActionBarProps {
  * Renders nothing when no items are selected. Shows Toggle Insurance /
  * Archive / Delete / Sell (greyed-out placeholder, no click handler).
  */
+// ── Layout clearance (STD-LAY-001, VLT-52) ─────────────────────────────────
+// The bar is fixed to the bottom of the viewport, so while it is showing the
+// list behind it must reserve room for it or its last row hides underneath.
+// The single source of that room is the CSS variable below. The bar writes it
+// from its own measured height (its controls wrap to two lines on some
+// modules and at narrower widths), plus its `bottom-4` offset and 1rem of
+// breathing space; list pages only ever read it via bulkBarClearance().
+export const BULK_BAR_CLEARANCE_VAR = "--bulk-bar-clearance";
+const BAR_OFFSET_AND_GAP_PX = 16 + 16; // bottom-4 + breathing space
+/** Used until the bar has measured itself: one row of controls (~3.75rem) + offset + gap. */
+const FALLBACK_CLEARANCE = "calc(3.75rem + 1rem + 1rem)";
+
+/** Style for a list page's container: reserves the bar's clearance while any row is selected. */
+export function bulkBarClearance(selectedCount: number): CSSProperties | undefined {
+  return selectedCount > 0 ? { paddingBottom: `var(${BULK_BAR_CLEARANCE_VAR}, ${FALLBACK_CLEARANCE})` } : undefined;
+}
+
 export default function BulkActionBar({
   module,
   selectedIds,
@@ -63,6 +80,24 @@ export default function BulkActionBar({
   const [busy, setBusy] = useState<null | "set_insure" | "archive" | "delete" | "generate_specs">(null);
   const confirmDialog = useConfirm();
   const count = selectedIds.size;
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // Publish the clearance (see BULK_BAR_CLEARANCE_VAR) while the bar is shown.
+  const visible = count > 0;
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!visible || !el) return;
+    const root = document.documentElement;
+    const publish = () =>
+      root.style.setProperty(BULK_BAR_CLEARANCE_VAR, `${Math.ceil(el.getBoundingClientRect().height) + BAR_OFFSET_AND_GAP_PX}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty(BULK_BAR_CLEARANCE_VAR);
+    };
+  }, [visible]);
 
   if (count === 0) return null;
 
@@ -151,7 +186,7 @@ export default function BulkActionBar({
   }
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(96vw,820px)]">
+    <div ref={barRef} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(96vw,820px)]">
       <div className="bg-surface border border-accent/30 rounded-2xl shadow-2xl shadow-black/40 px-4 py-3 flex items-center gap-3 backdrop-blur-md">
         <div className="flex items-center gap-2 text-sm">
           <span className="bg-accent/20 text-accent font-semibold px-2 py-0.5 rounded-full text-xs">{count}</span>

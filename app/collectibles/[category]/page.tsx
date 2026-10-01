@@ -19,7 +19,7 @@ import IoDListView from "@/components/IoDListView";
 import AddIoDModal from "@/components/AddIoDModal";
 import IoDValuationPromptModal from "@/components/IoDValuationPromptModal";
 import IoDCSVImportModal from "@/components/IoDCSVImportModal";
-import BulkActionBar from "@/components/BulkActionBar";
+import BulkActionBar, { bulkBarClearance } from "@/components/BulkActionBar";
 import { compareValues, conditionOrdinal, bestPriceOf, compareBrandThenYear } from "@/lib/sortHelpers";
 
 type SortField = string;
@@ -193,7 +193,8 @@ export default function IoDCategoryPage() {
   );
 
   return (
-    <div className="p-8">
+    // STD-LAY-001: reserve the fixed BulkActionBar's clearance while a selection is active.
+    <div className="p-8" style={bulkBarClearance(selectedIds.size)}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
