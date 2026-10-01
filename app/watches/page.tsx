@@ -1,7 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton } from "@/components/ListControls";
+import { ClearAllButton, SearchField } from "@/components/ListControls";
+import { matchesSearch } from "@/lib/listFilters";
 import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -47,6 +48,10 @@ const LIST_CONFIG: ListStateConfig = {
   ascFields: DEFAULT_ASC_FIELDS,
 };
 
+// STD-TBL-005: what the search box matches (substring, case-insensitive).
+const SEARCH_FIELDS = ["brand", "model", "reference_number", "serial_number", "short_description"];
+const SEARCH_PLACEHOLDER = "Search brand, model, reference, serial, description";
+
 export default function WatchesPage() {
   const { hideValues } = useHideValues();
   const fmt = (n: number | null | undefined) => hideValues ? "$•••" : fmtRaw(n);
@@ -71,8 +76,14 @@ export default function WatchesPage() {
     setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 });
   }, [listToggleSort]);
 
+  // STD-TBL-005: rows the search leaves visible.
+  const visibleItems = useMemo(
+    () => allItems.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
+    [allItems, list.q],
+  );
+
   const sortedItems = useMemo(() => {
-    const copy = [...allItems];
+    const copy = [...visibleItems];
     copy.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "brand") {
@@ -92,7 +103,7 @@ export default function WatchesPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [allItems, sortBy, sortDir]);
+  }, [visibleItems, sortBy, sortDir]);
 
   useEffect(() => {
     async function fetchData() {
@@ -121,12 +132,22 @@ export default function WatchesPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-text mb-1">Watches</h1>
         <p className="text-text-muted text-sm">
-          {loading ? "Loading…" : `${totalItems} item${totalItems !== 1 ? "s" : ""} across all categories`}
+          {loading
+            ? "Loading…"
+            : list.isFiltered
+              ? `Showing ${visibleItems.length} of ${totalItems} item${totalItems !== 1 ? "s" : ""}`
+              : `${totalItems} item${totalItems !== 1 ? "s" : ""} across all categories`}
         </p>
       </div>
 
       {/* List controls */}
-      <div className="flex items-center justify-end gap-2 mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <SearchField
+          value={list.q}
+          onChange={(q) => { list.setQ(q); setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 }); }}
+          placeholder={SEARCH_PLACEHOLDER}
+          label="Search watches"
+        />
         <ClearAllButton onClick={() => { list.reset(); setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 }); }} disabled={!list.canReset} />
       </div>
 
@@ -198,8 +219,14 @@ export default function WatchesPage() {
                       {catItems.length === 0 ? (
                         <tr>
                           <td colSpan={COLUMNS.length} className="px-4 py-5 text-sm text-text-dim text-center italic">
-                            No items yet —{" "}
-                            <Link href={`/watches/${cat}`} className="text-accent hover:underline">add one</Link>
+                            {list.isFiltered ? (
+                              "No matches in this category"
+                            ) : (
+                              <>
+                                No items yet —{" "}
+                                <Link href={`/watches/${cat}`} className="text-accent hover:underline">add one</Link>
+                              </>
+                            )}
                           </td>
                         </tr>
                       ) : (
