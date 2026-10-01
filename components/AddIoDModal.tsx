@@ -14,6 +14,7 @@ import { useImageUpload } from "@/lib/hooks/useImageUpload";
 import { useSpecsList } from "@/lib/hooks/useSpecsList";
 import { iodConfig } from "@/lib/collections/iod";
 import { uploadFiles, type UploadedFile } from "@/lib/api/uploadFiles";
+import { useDirtyGuard } from "@/lib/hooks/useDirtyGuard";
 import ModalShell from "@/components/forms/ModalShell";
 import ImagesEditor from "@/components/forms/ImagesEditor";
 import SpecsEditor from "@/components/forms/SpecsEditor";
@@ -62,6 +63,8 @@ export default function AddIoDModal({
 
   const imageUpload = useImageUpload();
   const specs = useSpecsList();
+  // STD-NAV-005: compare against the values the form opened with.
+  const guard = useDirtyGuard({ form, images: imageUpload.files.length, specs: specs.derive() }, onClose);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -139,7 +142,8 @@ export default function AddIoDModal({
     <ModalShell
       title="Add Item of Distinction"
       subtitle={IOD_CATEGORY_LABELS[form.category]}
-      onClose={onClose}
+      onClose={guard.requestClose}
+      isDirty={guard.isDirty}
     >
       <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
         <div>
@@ -318,7 +322,7 @@ export default function AddIoDModal({
         <ImagesEditor upload={imageUpload} />
 
         <ModalActions
-          onCancel={onClose}
+          onCancel={guard.requestClose}
           submitting={submitting}
           uploading={uploading}
           submitLabel="Add Item"
