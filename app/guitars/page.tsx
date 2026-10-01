@@ -1,8 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton, SearchField } from "@/components/ListControls";
-import { matchesSearch } from "@/lib/listFilters";
+import { ClearAllButton, SearchField, FilterBar } from "@/components/ListControls";
+import { matchesSearch, matchesFilters, FILTER_KEYS, splitMulti } from "@/lib/listFilters";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { itemHref } from "@/lib/itemRoutes";
@@ -48,6 +48,7 @@ const LIST_CONFIG: ListStateConfig = {
   defaultSort: "brand",
   defaultDir: "asc",
   ascFields: DEFAULT_ASC_FIELDS,
+  filterKeys: FILTER_KEYS,
 };
 
 // STD-TBL-005: what the search box matches (substring, case-insensitive).
@@ -82,8 +83,8 @@ export default function GuitarsPage() {
 
   // STD-TBL-005: rows the search leaves visible.
   const visibleItems = useMemo(
-    () => allItems.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
-    [allItems, list.q],
+    () => allItems.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS) && matchesFilters(i, list.filters)),
+    [allItems, list.q, list.filters],
   );
 
   const sortedItems = useMemo(() => {
@@ -130,6 +131,8 @@ export default function GuitarsPage() {
 
 
   const totalItems = allItems.length;
+  // Category filter (overview only) hides whole sections.
+  const catFilter = splitMulti(list.filters.cat);
 
   return (
     <div className="p-8">
@@ -145,8 +148,8 @@ export default function GuitarsPage() {
         </p>
       </div>
 
-      {/* List controls */}
-      <div className="flex items-center justify-between gap-3 mb-6">
+      {/* List controls: search (STD-TBL-005), filters (STD-TBL-004), Clear all */}
+      <div className="flex items-center justify-between gap-3 mb-3">
         <SearchField
           value={list.q}
           onChange={(q) => { list.setQ(q); setPages({ "electric-guitars": 0, "acoustic-guitars": 0, amplifiers: 0, pedals: 0 }); }}
@@ -154,6 +157,13 @@ export default function GuitarsPage() {
           label="Search guitars"
         />
         <ClearAllButton onClick={() => { list.reset(); setPages({ "electric-guitars": 0, "acoustic-guitars": 0, amplifiers: 0, pedals: 0 }); }} disabled={!list.canReset} />
+      </div>
+      <div className="mb-6">
+        <FilterBar
+          filters={list.filters}
+          setFilter={(k, v) => { list.setFilter(k, v); setPages({ "electric-guitars": 0, "acoustic-guitars": 0, amplifiers: 0, pedals: 0 }); }}
+          categoryOptions={GUITAR_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))}
+        />
       </div>
 
       {/* Sections */}
@@ -172,7 +182,7 @@ export default function GuitarsPage() {
         </div>
       ) : (
         <div className="space-y-10">
-          {GUITAR_CATEGORIES.map((cat) => {
+          {GUITAR_CATEGORIES.filter((c) => catFilter.length === 0 || catFilter.includes(c)).map((cat) => {
             // Use the page-level sorted list, then filter to this section.
             const catItems = sortedItems.filter((i) => i.category === cat);
             const page = pages[cat];

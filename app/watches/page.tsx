@@ -1,8 +1,8 @@
 "use client";
 
 import { useListState, type ListStateConfig } from "@/lib/hooks/useListState";
-import { ClearAllButton, SearchField } from "@/components/ListControls";
-import { matchesSearch } from "@/lib/listFilters";
+import { ClearAllButton, SearchField, FilterBar } from "@/components/ListControls";
+import { matchesSearch, matchesFilters, FILTER_KEYS, splitMulti } from "@/lib/listFilters";
 import { useHideValues } from "@/lib/HideValuesContext";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -46,6 +46,7 @@ const LIST_CONFIG: ListStateConfig = {
   defaultSort: "brand",
   defaultDir: "asc",
   ascFields: DEFAULT_ASC_FIELDS,
+  filterKeys: FILTER_KEYS,
 };
 
 // STD-TBL-005: what the search box matches (substring, case-insensitive).
@@ -78,8 +79,8 @@ export default function WatchesPage() {
 
   // STD-TBL-005: rows the search leaves visible.
   const visibleItems = useMemo(
-    () => allItems.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS)),
-    [allItems, list.q],
+    () => allItems.filter((i) => matchesSearch(i, list.q, SEARCH_FIELDS) && matchesFilters(i, list.filters)),
+    [allItems, list.q, list.filters],
   );
 
   const sortedItems = useMemo(() => {
@@ -125,6 +126,8 @@ export default function WatchesPage() {
 
 
   const totalItems = allItems.length;
+  // Category filter (overview only) hides whole sections.
+  const catFilter = splitMulti(list.filters.cat);
 
   return (
     <div className="p-8">
@@ -140,8 +143,8 @@ export default function WatchesPage() {
         </p>
       </div>
 
-      {/* List controls */}
-      <div className="flex items-center justify-between gap-3 mb-6">
+      {/* List controls: search (STD-TBL-005), filters (STD-TBL-004), Clear all */}
+      <div className="flex items-center justify-between gap-3 mb-3">
         <SearchField
           value={list.q}
           onChange={(q) => { list.setQ(q); setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 }); }}
@@ -149,6 +152,13 @@ export default function WatchesPage() {
           label="Search watches"
         />
         <ClearAllButton onClick={() => { list.reset(); setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 }); }} disabled={!list.canReset} />
+      </div>
+      <div className="mb-6">
+        <FilterBar
+          filters={list.filters}
+          setFilter={(k, v) => { list.setFilter(k, v); setPages({ "luxury-watches": 0, "sport-watches": 0, "dress-watches": 0, "vintage-watches": 0 }); }}
+          categoryOptions={WATCH_CATEGORIES.map((c) => ({ value: c, label: WATCH_CATEGORY_LABELS[c] }))}
+        />
       </div>
 
       {/* Sections */}
@@ -167,7 +177,7 @@ export default function WatchesPage() {
         </div>
       ) : (
         <div className="space-y-10">
-          {WATCH_CATEGORIES.map((cat) => {
+          {WATCH_CATEGORIES.filter((c) => catFilter.length === 0 || catFilter.includes(c)).map((cat) => {
             const catItems = sortedItems.filter((i) => i.category === cat);
             const page = pages[cat];
             const totalPages = Math.max(1, Math.ceil(catItems.length / PAGE_SIZE));
