@@ -210,8 +210,10 @@ objects.
 - `lib/hooks/useImageUpload.ts` + `components/forms/ImagesEditor.tsx` for Add modals
 - `lib/hooks/useEditImageList.ts` + `components/forms/EditImagesEditor.tsx` for
   Edit modals (handles existing-vs-new images, toDelete state, drag-reorder)
-- `components/forms/ModalShell.tsx` (with `nested` prop for stacked modals) +
-  `components/forms/ModalActions.tsx` (with `SaveCheckIcon` export)
+- `components/forms/ModalShell.tsx` + `components/forms/ModalActions.tsx`
+  (with `SaveCheckIcon` export). One modal at a time: a modal never opens
+  another modal (STD-NAV-003), so there is no stacked/nested variant — if a
+  modal needs to lead somewhere, that destination is a page.
 
 ## Conventions
 
