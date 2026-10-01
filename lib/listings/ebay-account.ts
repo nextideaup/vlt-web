@@ -72,6 +72,13 @@ export interface EbayAccountOptions {
   needsReauth: boolean;
 }
 
+// eBay returns these in its own order; sort by name (case-insensitive) so the
+// dropdowns read alphabetically (STD-LST-001). Pre-selection is by id, so it's
+// unaffected.
+function byName(options: EbayOption[]): EbayOption[] {
+  return [...options].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
 async function fetchPolicies(
   token: string,
   marketplaceId: string,
@@ -89,7 +96,7 @@ async function fetchPolicies(
   const options = arr
     .map((p) => ({ id: String(p[idKey] ?? ""), name: String(p.name ?? p[idKey] ?? "") }))
     .filter((o) => o.id);
-  return { options, forbidden: false };
+  return { options: byName(options), forbidden: false };
 }
 
 export interface NewLocationInput {
@@ -146,9 +153,11 @@ export async function fetchEbayAccountOptions(token: string, marketplaceId: stri
     });
     if (res.ok) {
       const data = (await res.json()) as { locations?: { merchantLocationKey?: string; name?: string }[] };
-      locations = (data.locations ?? [])
-        .map((l) => ({ id: String(l.merchantLocationKey ?? ""), name: String(l.name ?? l.merchantLocationKey ?? "") }))
-        .filter((o) => o.id);
+      locations = byName(
+        (data.locations ?? [])
+          .map((l) => ({ id: String(l.merchantLocationKey ?? ""), name: String(l.name ?? l.merchantLocationKey ?? "") }))
+          .filter((o) => o.id),
+      );
     }
   } catch { /* leave empty */ }
 
