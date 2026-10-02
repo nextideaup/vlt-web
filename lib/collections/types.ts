@@ -9,7 +9,9 @@ export interface FieldSpec {
   // Field type discriminator. Defaults to "string" (current normalize behaviour).
   // "boolean" bypasses the `value || null` coercion in normalizeField so that
   // `false` survives the round-trip — critical for the NOT NULL `insure` column
-  // added by CUR-2 (migration 016).
+  // added by CUR-2 (migration 016). It is optional in a request body: when
+  // absent, POST omits the column so the DB default applies; when present it
+  // must be a JSON boolean or the request is a 400 (VLT-64).
   // "jsonb" JSON.stringifies the value before binding it as a query parameter
   // (node-postgres would otherwise mangle a JS array into a Postgres array
   // literal). An empty array / null collapses to SQL NULL. Used by the freeform

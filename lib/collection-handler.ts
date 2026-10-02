@@ -94,8 +94,9 @@ function normalizeField(value: unknown, spec: FieldSpec): unknown {
   // must survive the round-trip to the DB. The NOT NULL `insure` column on
   // each item table (migration 016) would otherwise blow up on INSERT when a
   // user leaves the "Include in insurance schedule" checkbox unticked.
+  // validateBody has already refused anything that is not a JSON boolean.
   if (spec.type === "boolean") {
-    return value === true || value === "true";
+    return value === true;
   }
   // JSONB columns (the freeform `specs` array). node-postgres binds a JS array
   // as a Postgres array literal, which a jsonb column rejects — so serialize it
@@ -134,6 +135,14 @@ function validateBody(
     // from the iOS app would otherwise fail with "brand is required"
     // even though the body never tried to change `brand`.
     if (!isCreate && !(f.name in body)) continue;
+    // Boolean fields (`insure`) are optional, but when the key is sent it
+    // must be a real JSON boolean (VLT-64). The columns are NOT NULL, so a
+    // `null` used to reach Postgres and 500, and a string like "yes" was
+    // silently stored as false. An absent key is fine: POST leaves the
+    // column out so the DB default applies, and PATCH leaves it untouched.
+    if (f.type === "boolean" && f.name in body && typeof body[f.name] !== "boolean") {
+      return `${f.name} must be a boolean (true or false)`;
+    }
     if (!f.required) continue;
     const v = body[f.name];
     if (v == null) return `${f.name} is required`;
@@ -272,10 +281,15 @@ export function makeListHandlers(c: CollectionConfig) {
         return NextResponse.json({ error: validationError }, { status: 400 });
       }
 
-      const columns = ["category", ...c.fields.map((f) => f.name), "user_id"];
+      // A boolean field the body leaves out is left out of the INSERT too, so
+      // Postgres applies the column default (insure: DEFAULT FALSE, migration
+      // 016, the same default the web Add modals start from) instead of an
+      // explicit NULL hitting the NOT NULL constraint (VLT-64).
+      const insertFields = c.fields.filter((f) => f.type !== "boolean" || f.name in body);
+      const columns = ["category", ...insertFields.map((f) => f.name), "user_id"];
       const values: unknown[] = [
         body.category,
-        ...c.fields.map((f) => normalizeField(body[f.name], f)),
+        ...insertFields.map((f) => normalizeField(body[f.name], f)),
         session.user.id,
       ];
       // Stamp specs_updated_at when the create payload carries specs (CUR-1).
