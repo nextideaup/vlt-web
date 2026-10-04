@@ -15,8 +15,14 @@ export interface FieldSpec {
   // "jsonb" JSON.stringifies the value before binding it as a query parameter
   // (node-postgres would otherwise mangle a JS array into a Postgres array
   // literal). An empty array / null collapses to SQL NULL. Used by the freeform
-  // `specs` column (migration 019). Add other types here as needed.
-  type?: "boolean" | "jsonb";
+  // `specs` column (migration 019); the value must be an array of
+  // { label, value } entries or the request is a 400 (VLT-65).
+  // "integer" (INTEGER columns), "number" (NUMERIC columns) and "date" (DATE
+  // columns) are checked before the query runs, so a value Postgres would
+  // refuse is a 400 naming the field instead of a 500 (VLT-65). null and ""
+  // still clear the column, as before.
+  // Add other types here as needed.
+  type?: "boolean" | "jsonb" | "integer" | "number" | "date";
 }
 
 // Module slug used by lib/insurance-valuation.ts MODULE_CATEGORIES and the
