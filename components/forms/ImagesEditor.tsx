@@ -3,7 +3,8 @@
 import type { ImageUpload } from "@/lib/hooks/useImageUpload";
 
 // Drop zone + preview grid driven by the ImageUpload state from
-// useImageUpload(). Used by every Add/Edit modal.
+// useImageUpload(). Used by every Add/Edit modal. Images arrive by picker,
+// drag-and-drop or clipboard paste anywhere in the open modal (VLT-47).
 
 interface ImagesEditorProps {
   upload: ImageUpload;
@@ -15,6 +16,8 @@ export default function ImagesEditor({ upload, label = "Images" }: ImagesEditorP
   const {
     previews,
     dragOver,
+    notice,
+    accept,
     fileInputRef,
     reorderDragIdx,
     reorderDropIdx,
@@ -44,18 +47,21 @@ export default function ImagesEditor({ upload, label = "Images" }: ImagesEditorP
           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
         </svg>
         <p className="text-sm text-text-muted">
-          Drag &amp; drop or <span className="text-accent">click to upload</span>
+          Drag &amp; drop, paste, or <span className="text-accent">click to upload</span>
         </p>
-        <p className="text-xs text-text-dim mt-1">JPG, PNG, WebP up to 10MB each</p>
+        <p className="text-xs text-text-dim mt-1">JPG, PNG, WebP or GIF up to 10MB each</p>
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={accept}
           multiple
           onChange={onFileChange}
           className="hidden"
         />
       </div>
+      {notice && (
+        <p role="alert" className="text-xs text-red-400 mt-1.5">{notice}</p>
+      )}
 
       {previews.length > 0 && (
         <div className="mt-3 space-y-1.5">

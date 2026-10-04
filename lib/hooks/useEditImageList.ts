@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { IMAGE_ATTACH_RULES } from "@/lib/attach/rules";
+import { useFileAttach } from "@/lib/hooks/useFileAttach";
 
 // Edit-modal counterpart to useImageUpload. Manages a unified list of images
 // where each entry is either an existing DB row (toggleable toDelete) or a
 // new pending upload (immediate-remove). Drag-to-reorder operates on the
-// combined list.
+// combined list. New images arrive by picker, drag-and-drop or clipboard
+// paste, all three through useFileAttach + IMAGE_ATTACH_RULES (VLT-47).
 //
 // Submit-time the modal reads `derived` to get the three lists the PATCH
 // endpoint expects: image_order (ordered IDs of kept existing images),
@@ -24,6 +27,10 @@ export type EditImage<T extends BaseImage> =
 export interface EditImageList<T extends BaseImage> {
   editImages: EditImage<T>[];
   dragOver: boolean;
+  /** Why the last pick/drop/paste refused a file; null when nothing was refused. */
+  notice: string | null;
+  /** The picker's accept attribute — the same rules drop and paste are held to. */
+  accept: string;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   reorderDragIdx: number | null;
   reorderDropIdx: number | null;
@@ -53,14 +60,12 @@ export function useEditImageList<T extends BaseImage>(initial: T[]): EditImageLi
   const [editImages, setEditImages] = useState<EditImage<T>[]>(() =>
     initial.map((image) => ({ kind: "existing" as const, image, toDelete: false })),
   );
-  const [dragOver, setDragOver] = useState(false);
   const [reorderDragIdx, setReorderDragIdx] = useState<number | null>(null);
   const [reorderDropIdx, setReorderDropIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const addNewFiles = useCallback((files: File[]) => {
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length === 0) return;
+  // Receives only files that passed IMAGE_ATTACH_RULES (type, size).
+  const addNewFiles = useCallback((imageFiles: File[]) => {
     imageFiles.forEach((file) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -73,26 +78,7 @@ export function useEditImageList<T extends BaseImage>(initial: T[]): EditImageLi
     });
   }, []);
 
-  const onFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files) addNewFiles(Array.from(e.target.files));
-    },
-    [addNewFiles],
-  );
-
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-  const onDragLeave = useCallback(() => setDragOver(false), []);
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      if (e.dataTransfer.files) addNewFiles(Array.from(e.dataTransfer.files));
-    },
-    [addNewFiles],
-  );
+  const attach = useFileAttach({ rules: IMAGE_ATTACH_RULES, onFiles: addNewFiles });
   const onPickClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -162,15 +148,17 @@ export function useEditImageList<T extends BaseImage>(initial: T[]): EditImageLi
 
   return {
     editImages,
-    dragOver,
+    dragOver: attach.dragOver,
+    notice: attach.notice,
+    accept: attach.inputProps.accept,
     fileInputRef,
     reorderDragIdx,
     reorderDropIdx,
     onPickClick,
-    onFileChange,
-    onDragOver,
-    onDragLeave,
-    onDrop,
+    onFileChange: attach.inputProps.onChange,
+    onDragOver: attach.dropProps.onDragOver,
+    onDragLeave: attach.dropProps.onDragLeave,
+    onDrop: attach.dropProps.onDrop,
     toggleDelete,
     reorder,
     derived,

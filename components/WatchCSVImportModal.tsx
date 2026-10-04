@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { CSV_ATTACH_RULES } from "@/lib/attach/rules";
+import { useFileAttach } from "@/lib/hooks/useFileAttach";
 import { WatchCategory, WATCH_CATEGORY_LABELS, WATCH_CATEGORIES, CONDITIONS } from "@/lib/types";
 
 interface WatchCSVImportModalProps {
@@ -244,7 +246,6 @@ export default function WatchCSVImportModal({ defaultCategory, onClose, onImport
     bracelet_material: "", case_material: "", short_description: "", link: "", notes: "",
   });
   const [mappedRows, setMappedRows] = useState<MappedRow[]>([]);
-  const [dragOver, setDragOver] = useState(false);
   const [parseError, setParseError] = useState("");
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ imported: number; failed: number; errors: string[] } | null>(null);
@@ -305,12 +306,14 @@ export default function WatchCSVImportModal({ defaultCategory, onClose, onImport
     reader.readAsText(file);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
+  // VLT-47 (STD-FRM-002): picker, drop and paste all run CSV_ATTACH_RULES
+  // (one .csv) before handleFile. Text pasted outside a field fills the paste box.
+  const attach = useFileAttach({
+    rules: CSV_ATTACH_RULES,
+    onFiles: (files) => handleFile(files[0]),
+    onText: (text) => { setCsvText(text); setParseError(""); },
+    enabled: step === "upload",
+  });
 
   const handlePasteUpload = () => {
     if (!csvText.trim()) { setParseError("Please paste CSV content first."); return; }
@@ -432,20 +435,20 @@ export default function WatchCSVImportModal({ defaultCategory, onClose, onImport
             <div className="space-y-5">
               <div
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
-                  dragOver ? "border-accent bg-accent/5" : "border-border hover:border-border-2"
+                  attach.dragOver ? "border-accent bg-accent/5" : "border-border hover:border-border-2"
                 }`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
+                {...attach.dropProps}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <svg className="w-10 h-10 text-text-dim mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                 </svg>
                 <p className="text-text font-medium">Drop your CSV file here</p>
-                <p className="text-sm text-text-muted mt-1">or click to browse</p>
-                <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                <p className="text-sm text-text-muted mt-1">or click to browse, or paste it here</p>
+                <input ref={fileInputRef} type="file" className="hidden" {...attach.inputProps} />
               </div>
+
+              {attach.notice && <p role="alert" className="text-xs text-red-400">{attach.notice}</p>}
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-border" />

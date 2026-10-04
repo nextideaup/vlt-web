@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { IMAGE_ATTACH_RULES } from "@/lib/attach/rules";
+import { useFileAttach } from "@/lib/hooks/useFileAttach";
 
 // State + handlers for an in-modal image picker:
-//   - drag-and-drop or click-to-upload (multi-file)
+//   - click-to-upload, drag-and-drop or clipboard paste (multi-file), all
+//     three through useFileAttach + IMAGE_ATTACH_RULES (VLT-47, STD-FRM-002)
 //   - per-file data-URL previews
 //   - drag-to-reorder with drop-target highlight
 //
@@ -15,6 +18,10 @@ export interface ImageUpload {
   files: File[];
   previews: string[];
   dragOver: boolean;
+  /** Why the last pick/drop/paste refused a file; null when nothing was refused. */
+  notice: string | null;
+  /** The picker's accept attribute — the same rules drop and paste are held to. */
+  accept: string;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   reorderDragIdx: number | null;
   reorderDropIdx: number | null;
@@ -35,14 +42,12 @@ export interface ImageUpload {
 export function useImageUpload(): ImageUpload {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  const [dragOver, setDragOver] = useState(false);
   const [reorderDragIdx, setReorderDragIdx] = useState<number | null>(null);
   const [reorderDropIdx, setReorderDropIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const addFiles = useCallback((newFiles: File[]) => {
-    const imageFiles = newFiles.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length === 0) return;
+  // Receives only files that passed IMAGE_ATTACH_RULES (type, size).
+  const addFiles = useCallback((imageFiles: File[]) => {
     setFiles((prev) => [...prev, ...imageFiles]);
     imageFiles.forEach((file) => {
       const reader = new FileReader();
@@ -53,28 +58,7 @@ export function useImageUpload(): ImageUpload {
     });
   }, []);
 
-  const onFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files) addFiles(Array.from(e.target.files));
-    },
-    [addFiles],
-  );
-
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-
-  const onDragLeave = useCallback(() => setDragOver(false), []);
-
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      if (e.dataTransfer.files) addFiles(Array.from(e.dataTransfer.files));
-    },
-    [addFiles],
-  );
+  const attach = useFileAttach({ rules: IMAGE_ATTACH_RULES, onFiles: addFiles });
 
   const onPickClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -128,15 +112,17 @@ export function useImageUpload(): ImageUpload {
   return {
     files,
     previews,
-    dragOver,
+    dragOver: attach.dragOver,
+    notice: attach.notice,
+    accept: attach.inputProps.accept,
     fileInputRef,
     reorderDragIdx,
     reorderDropIdx,
     onPickClick,
-    onFileChange,
-    onDragOver,
-    onDragLeave,
-    onDrop,
+    onFileChange: attach.inputProps.onChange,
+    onDragOver: attach.dropProps.onDragOver,
+    onDragLeave: attach.dropProps.onDragLeave,
+    onDrop: attach.dropProps.onDrop,
     removeAt,
     reorder,
   };
