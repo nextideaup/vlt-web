@@ -101,6 +101,7 @@ function normalizeField(value: unknown, spec: FieldSpec): unknown {
   // JSONB columns (the freeform `specs` array). node-postgres binds a JS array
   // as a Postgres array literal, which a jsonb column rejects — so serialize it
   // ourselves. An empty array collapses to SQL NULL to keep "no specs" tidy.
+  // validateBody has already refused anything that is not an array (VLT-65).
   if (spec.type === "jsonb") {
     if (Array.isArray(value) && value.length === 0) return null;
     if (typeof value === "object") return JSON.stringify(value);
@@ -115,6 +116,136 @@ function normalizeField(value: unknown, spec: FieldSpec): unknown {
   return (value as unknown) || null;
 }
 
+// Read the request body as a JSON object. A body that is not JSON, or is JSON
+// but not an object (null, an array, a string), is the client's mistake: 400,
+// never the parser's message (VLT-65). Same wording as the bulk-action handler.
+async function readJsonObject(
+  request: NextRequest
+): Promise<{ body: Record<string, unknown> } | { error: string }> {
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    return { error: "Invalid JSON body" };
+  }
+  if (!isPlainObject(parsed)) return { error: "Request body must be a JSON object" };
+  return { body: parsed };
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// ── Typed field checks (VLT-65) ──
+// Each returns an error message naming the field, or null when Postgres will
+// accept the value. null / undefined / "" are not checked here: they clear the
+// column, exactly as before (normalizeField maps them to SQL NULL).
+
+const INT4_MIN = -2147483648;
+const INT4_MAX = 2147483647;
+const INTEGER_RE = /^[+-]?\d+$/;
+const DECIMAL_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+// YYYY-MM-DD, optionally followed by an ISO time. GET returns a DATE column as
+// a full timestamp (node-postgres → JS Date → "2024-01-15T05:00:00.000Z"), and
+// the iOS edit form sends that value straight back, so the time part is allowed.
+const DATE_RE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/;
+
+function checkInteger(name: string, v: unknown): string | null {
+  let n: number;
+  if (typeof v === "number") n = v;
+  else if (typeof v === "string" && INTEGER_RE.test(v.trim())) n = Number(v.trim());
+  else return `${name} must be a whole number`;
+  if (!Number.isInteger(n) || n < INT4_MIN || n > INT4_MAX) return `${name} must be a whole number`;
+  return null;
+}
+
+function checkNumber(name: string, v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v)) return null;
+  if (typeof v === "string" && DECIMAL_RE.test(v.trim()) && Number.isFinite(Number(v.trim()))) return null;
+  return `${name} must be a number`;
+}
+
+function checkDate(name: string, v: unknown): string | null {
+  const m = typeof v === "string" ? DATE_RE.exec(v.trim()) : null;
+  if (!m) return `${name} must be a date (YYYY-MM-DD)`;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+  // Postgres has no year 0, and refuses Feb 30 and month 13.
+  if (y < 1 || days === undefined || d < 1 || d > days) return `${name} must be a real calendar date`;
+  return null;
+}
+
+// The `specs` column: an array of { label, value } entries (lib/types.ts
+// SpecEntry). Anything else used to be silently dropped on POST and, worse,
+// silently CLEARED the stored specs on PATCH (VLT-65).
+function checkSpecs(name: string, v: unknown): string | null {
+  if (!Array.isArray(v)) return `${name} must be an array of { label, value } entries`;
+  for (let i = 0; i < v.length; i++) {
+    const e = v[i];
+    if (!isPlainObject(e) || typeof e.label !== "string" || typeof e.value !== "string") {
+      return `${name}[${i}] must be an object with string label and value`;
+    }
+  }
+  return null;
+}
+
+function checkField(f: FieldSpec, v: unknown): string | null {
+  if (v == null) return null;
+  switch (f.type) {
+    case "integer":
+      return v === "" ? null : checkInteger(f.name, v);
+    case "number":
+      return v === "" ? null : checkNumber(f.name, v);
+    case "date":
+      return v === "" ? null : checkDate(f.name, v);
+    case "jsonb":
+      return checkSpecs(f.name, v);
+    default:
+      return null;
+  }
+}
+
+const MODERATION_STATUSES = ["clean", "flagged", "unreviewed"] as const;
+
+// `image_paths` entries are the objects /api/upload returns (lib/api/uploadFiles.ts
+// on the web, UploadedImage on iOS). They are checked BEFORE the item row is
+// written: an entry missing filename/path used to 500 after the INSERT/UPDATE
+// had already committed, leaving an orphan item or a half-applied PATCH (VLT-65).
+function checkImagePaths(v: unknown): string | null {
+  if (v == null) return null;
+  if (!Array.isArray(v)) return "image_paths must be an array";
+  for (let i = 0; i < v.length; i++) {
+    const img = v[i];
+    const at = `image_paths[${i}]`;
+    if (!isPlainObject(img)) return `${at} must be an object`;
+    if (typeof img.filename !== "string" || !img.filename.trim()) return `${at}.filename is required`;
+    if (typeof img.path !== "string" || !img.path.trim()) return `${at}.path is required`;
+    if (img.original_name != null && typeof img.original_name !== "string") return `${at}.original_name must be a string`;
+    if (img.mime_type != null && typeof img.mime_type !== "string") return `${at}.mime_type must be a string`;
+    if (img.size != null && !(Number.isSafeInteger(img.size) && (img.size as number) >= 0)) {
+      return `${at}.size must be a whole number of bytes`;
+    }
+    if (
+      img.moderation_status != null &&
+      !MODERATION_STATUSES.includes(img.moderation_status as (typeof MODERATION_STATUSES)[number])
+    ) {
+      return `${at}.moderation_status must be one of: ${MODERATION_STATUSES.join(", ")}`;
+    }
+    if (
+      img.nsfw_score != null &&
+      !(typeof img.nsfw_score === "number" && img.nsfw_score >= 0 && img.nsfw_score <= 1)
+    ) {
+      return `${at}.nsfw_score must be a number from 0 to 1`;
+    }
+    if (img.nsfw_categories != null && !Array.isArray(img.nsfw_categories)) {
+      return `${at}.nsfw_categories must be an array`;
+    }
+  }
+  return null;
+}
+
 function validateBody(
   body: Record<string, unknown>,
   c: CollectionConfig,
@@ -123,7 +254,12 @@ function validateBody(
   if (isCreate) {
     if (!body.category || typeof body.category !== "string") return "category is required";
     if (!c.validCategories.includes(body.category)) return "Invalid category";
-  } else if (body.category != null && body.category !== "") {
+  } else if ("category" in body) {
+    // category is a NOT NULL column: a PATCH that sends it must send a real
+    // one. null / "" used to skip this check and 500 on the UPDATE (VLT-65).
+    if (body.category == null || (typeof body.category === "string" && !body.category.trim())) {
+      return "category cannot be empty";
+    }
     if (!c.validCategories.includes(body.category as string)) return "Invalid category";
   }
 
@@ -143,6 +279,10 @@ function validateBody(
     if (f.type === "boolean" && f.name in body && typeof body[f.name] !== "boolean") {
       return `${f.name} must be a boolean (true or false)`;
     }
+    // Typed columns: a value Postgres would refuse is a 400 naming the field,
+    // not a 500 from the INSERT/UPDATE (VLT-65).
+    const typeError = checkField(f, body[f.name]);
+    if (typeError) return typeError;
     if (!f.required) continue;
     const v = body[f.name];
     if (v == null) return `${f.name} is required`;
@@ -165,7 +305,7 @@ function validateBody(
     }
   }
 
-  return null;
+  return checkImagePaths(body.image_paths);
 }
 
 // ── Image side-effects ────────────────────────────────────────────────────────
@@ -275,7 +415,11 @@ export function makeListHandlers(c: CollectionConfig) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      const body = (await request.json()) as Record<string, unknown>;
+      const parsed = await readJsonObject(request);
+      if ("error" in parsed) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+      }
+      const { body } = parsed;
       const validationError = validateBody(body, c, true);
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
@@ -391,6 +535,10 @@ export function makeItemHandlers(c: CollectionConfig) {
       }
 
       const { id } = await params;
+      // Same as GET and PATCH: a malformed id is "no such item" (VLT-65).
+      if (!UUID_RE.test(id)) {
+        return NextResponse.json({ error: "Item not found" }, { status: 404 });
+      }
 
       // Read filenames before the cascade removes the rows so we can clean
       // them off disk after the parent delete commits.
@@ -429,8 +577,16 @@ export function makeItemHandlers(c: CollectionConfig) {
       }
 
       const { id } = await params;
+      // Same as GET: a malformed id is "no such item", not a uuid-cast 500.
+      if (!UUID_RE.test(id)) {
+        return NextResponse.json({ error: "Item not found" }, { status: 404 });
+      }
 
-      const body = (await request.json()) as Record<string, unknown>;
+      const parsed = await readJsonObject(request);
+      if ("error" in parsed) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+      }
+      const { body } = parsed;
       const validationError = validateBody(body, c, false);
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
