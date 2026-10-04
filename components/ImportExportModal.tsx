@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { JSON_ATTACH_RULES } from "@/lib/attach/rules";
+import { useFileAttach } from "@/lib/hooks/useFileAttach";
 
 interface ValidationError { row: number; field: string; message: string; }
 interface ValidationResult { count: number; errors: ValidationError[]; }
@@ -78,7 +80,6 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [importStep, setImportStep]       = useState<ImportStep>("select");
-  const [dragOver, setDragOver]           = useState(false);
   const [fileName, setFileName]           = useState("");
   const [fileData, setFileData]           = useState<unknown>(null);
   const [parseError, setParseError]       = useState("");
@@ -124,17 +125,13 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
     }
   }, []);
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
-  };
+  // VLT-47 (STD-FRM-002): picker, drop and paste all run JSON_ATTACH_RULES
+  // (one .json) before processFile. Paste is live only on the import step.
+  const attach = useFileAttach({
+    rules: JSON_ATTACH_RULES,
+    onFiles: (files) => { void processFile(files[0]); },
+    enabled: tab === "import" && importStep === "select" && !validating,
+  });
 
   const [importError, setImportError] = useState("");
 
@@ -331,12 +328,10 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
 
                   {/* Drop zone */}
                   <div
-                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={onDrop}
+                    {...attach.dropProps}
                     onClick={() => fileRef.current?.click()}
                     className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-                      dragOver
+                      attach.dragOver
                         ? "border-accent bg-accent/10"
                         : "border-border hover:border-accent/50 hover:bg-surface-2"
                     }`}
@@ -345,11 +340,17 @@ export default function ImportExportModal({ onClose }: { onClose: () => void }) 
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                     </svg>
                     <p className="text-sm font-medium text-text mb-1">
-                      {dragOver ? "Drop to upload" : "Drop file here or click to browse"}
+                      {attach.dragOver ? "Drop to upload" : "Drop file here, paste it, or click to browse"}
                     </p>
                     <p className="text-xs text-text-dim">Supports .json files exported from Vault 1 (or legacy Curatada exports)</p>
-                    <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={onFileChange} />
+                    <input ref={fileRef} type="file" className="hidden" {...attach.inputProps} />
                   </div>
+
+                  {attach.notice && (
+                    <div role="alert" className="bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-sm text-red-400">
+                      {attach.notice}
+                    </div>
+                  )}
 
                   {parseError && (
                     <div className="bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-sm text-red-400">

@@ -5,16 +5,12 @@ import { v4 as uuidv4 } from "uuid";
 import { getApiSession } from "@/lib/api-auth";
 import { r2IsConfigured, r2PutObject } from "@/lib/storage/r2";
 import { classifyImage } from "@/lib/moderation/nsfw";
+import { IMAGE_MAX_BYTES, IMAGE_MIME_TYPES } from "@/lib/attach/rules";
 
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-];
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+// Shared with the browser's picker/drop/paste rules (lib/attach/rules.ts,
+// VLT-47) so a file the image editors accept is one this route stores.
+const ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES;
+const MAX_FILE_SIZE = IMAGE_MAX_BYTES; // 10MB
 
 export async function POST(request: NextRequest) {
   try {
