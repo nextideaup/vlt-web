@@ -4,27 +4,30 @@
 // configs.
 
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
 import { getApiSession } from "@/lib/api-auth";
 import { query, queryOne } from "@/lib/db";
-import { r2IsConfigured, r2DeleteObjects } from "@/lib/storage/r2";
+import { isUploadKey, ownedUploads, releaseUploads, uploadPathFor, type UploadRecord } from "@/lib/storage/uploads";
 import type { CollectionConfig, FieldSpec } from "@/lib/collections/types";
 
 const VALID_CONDITIONS = ["Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"] as const;
 
+// One `image_paths` entry as the web modals and iOS send it: the object
+// /api/upload returned, spread back. Only `filename` (the key) and
+// `original_name` (a display label) are read from it. The path, MIME type,
+// size and moderation verdict the client echoes are ignored: the row takes
+// them from the server's `uploads` ledger (VLT-67).
 interface ImagePath {
   filename: string;
-  original_name: string | null;
-  path: string;
+  original_name?: string | null;
   mime_type?: string | null;
   size?: number | null;
-  // Tier-1 moderation metadata produced by /api/upload (lib/moderation/nsfw.ts).
-  // Optional for backwards compatibility — any caller that posts an image
-  // path without these fields lands at the DB default ('unreviewed').
-  moderation_status?: "clean" | "flagged" | "unreviewed" | null;
-  nsfw_score?: number | null;
-  nsfw_categories?: { className: string; probability: number }[] | null;
+}
+
+// An `image_paths` entry after its key has been checked against the ledger.
+interface ResolvedImage {
+  key: string;
+  original_name: string | null;
+  upload: UploadRecord;
 }
 
 // ── SQL fragment builders ─────────────────────────────────────────────────────
@@ -213,6 +216,9 @@ const MODERATION_STATUSES = ["clean", "flagged", "unreviewed"] as const;
 // on the web, UploadedImage on iOS). They are checked BEFORE the item row is
 // written: an entry missing filename/path used to 500 after the INSERT/UPDATE
 // had already committed, leaving an orphan item or a half-applied PATCH (VLT-65).
+// The key must be a plain upload key and the path must be the one the server
+// derives from it (VLT-67); whether the caller owns the key is checked next,
+// against the ledger, by resolveImagePaths.
 function checkImagePaths(v: unknown): string | null {
   if (v == null) return null;
   if (!Array.isArray(v)) return "image_paths must be an array";
@@ -222,6 +228,8 @@ function checkImagePaths(v: unknown): string | null {
     if (!isPlainObject(img)) return `${at} must be an object`;
     if (typeof img.filename !== "string" || !img.filename.trim()) return `${at}.filename is required`;
     if (typeof img.path !== "string" || !img.path.trim()) return `${at}.path is required`;
+    if (!isUploadKey(img.filename)) return `${at}.filename is not an uploaded image`;
+    if (img.path !== uploadPathFor(img.filename)) return `${at}.path must be ${uploadPathFor(img.filename)}`;
     if (img.original_name != null && typeof img.original_name !== "string") return `${at}.original_name must be a string`;
     if (img.mime_type != null && typeof img.mime_type !== "string") return `${at}.mime_type must be a string`;
     if (img.size != null && !(Number.isSafeInteger(img.size) && (img.size as number) >= 0)) {
@@ -308,61 +316,60 @@ function validateBody(
   return checkImagePaths(body.image_paths);
 }
 
+// Every key in `image_paths` must be one /api/upload minted for this user
+// (VLT-67). Runs after validateBody and before any write, so a refused key
+// leaves no orphan item or half-applied PATCH behind.
+async function resolveImagePaths(
+  v: unknown,
+  userId: string
+): Promise<{ images: ResolvedImage[] } | { error: string }> {
+  if (!Array.isArray(v) || v.length === 0) return { images: [] };
+  const entries = v as ImagePath[];
+  const owned = await ownedUploads(userId, entries.map((e) => e.filename));
+  const images: ResolvedImage[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const upload = owned.get(entries[i].filename);
+    if (!upload) return { error: `image_paths[${i}] is not an image this account uploaded` };
+    images.push({ key: upload.key, original_name: entries[i].original_name ?? upload.original_name, upload });
+  }
+  return { images };
+}
+
 // ── Image side-effects ────────────────────────────────────────────────────────
 
-// Best-effort deletion of the underlying image objects. R2 in production,
-// local public/uploads in dev. Failures here are logged but never propagated
-// — the parent row is already gone (cascade), so we'd rather end up with an
-// orphan storage object than a 500 on a successful PATCH/DELETE.
-async function deleteImageFiles(images: { filename: string }[]): Promise<void> {
-  if (images.length === 0) return;
-  if (r2IsConfigured()) {
-    try {
-      await r2DeleteObjects(images.map((img) => img.filename));
-    } catch (err) {
-      console.warn("[storage] R2 delete failed:", err);
-    }
-    return;
-  }
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
-  for (const image of images) {
-    try {
-      await fs.unlink(path.join(uploadsDir, image.filename));
-    } catch {
-      // file may already be gone; nothing to do
-    }
-  }
-}
+// Storage objects behind deleted image rows are removed by releaseUploads
+// (lib/storage/uploads.ts): only plain upload keys the item's owner uploaded,
+// and only once no image row points at them. Best-effort — the rows are
+// already gone, so a storage failure is logged rather than turned into a 500.
 
 async function insertImagePaths(
   c: CollectionConfig,
   itemId: string,
-  imagePaths: ImagePath[],
+  images: ResolvedImage[],
   startIndex: number,
   hasExisting: boolean
 ): Promise<void> {
-  for (let i = 0; i < imagePaths.length; i++) {
-    const img = imagePaths[i];
-    // Moderation columns (migration 017) — pass through the verdict from
-    // /api/upload when present. Falling back to the DB default ('unreviewed'
-    // + null score) keeps callers that predate the moderation pipeline
-    // working unchanged; the public-gallery feature will treat 'unreviewed'
-    // the same as 'flagged' until it gets a Tier-2 pass.
+  for (let i = 0; i < images.length; i++) {
+    const { key, original_name, upload } = images[i];
+    // The key, path, MIME type, size and moderation verdict all come from the
+    // ledger row /api/upload wrote (VLT-67). A key with no recorded verdict
+    // lands at 'unreviewed', which the public-gallery feature will treat the
+    // same as 'flagged' until it gets a Tier-2 pass.
     await query(
       `INSERT INTO ${c.imagesTable} (${c.imageFkColumn}, filename, original_name, path, mime_type, size, is_primary, sort_order, moderation_status, nsfw_score, nsfw_categories)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 'unreviewed'), $10, $11)`,
       [
         itemId,
-        img.filename,
-        img.original_name,
-        img.path,
-        img.mime_type ?? null,
-        img.size ?? null,
+        key,
+        original_name,
+        uploadPathFor(key),
+        upload.mime_type,
+        upload.size,
         !hasExisting && i === 0,
         startIndex + i,
-        img.moderation_status ?? null,
-        img.nsfw_score ?? null,
-        img.nsfw_categories ? JSON.stringify(img.nsfw_categories) : null,
+        upload.moderation_status,
+        upload.nsfw_score,
+        upload.nsfw_categories == null ? null : JSON.stringify(upload.nsfw_categories),
       ]
     );
   }
@@ -424,6 +431,10 @@ export function makeListHandlers(c: CollectionConfig) {
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
       }
+      const resolved = await resolveImagePaths(body.image_paths, session.user.id);
+      if ("error" in resolved) {
+        return NextResponse.json({ error: resolved.error }, { status: 400 });
+      }
 
       // A boolean field the body leaves out is left out of the INSERT too, so
       // Postgres applies the column default (insure: DEFAULT FALSE, migration
@@ -452,9 +463,8 @@ export function makeListHandlers(c: CollectionConfig) {
       );
       if (!item) throw new Error(`Failed to create ${c.label} item`);
 
-      const imagePaths = body.image_paths;
-      if (Array.isArray(imagePaths) && imagePaths.length > 0) {
-        await insertImagePaths(c, item.id, imagePaths as ImagePath[], 0, false);
+      if (resolved.images.length > 0) {
+        await insertImagePaths(c, item.id, resolved.images, 0, false);
       }
 
       const fullItem = await queryOne(
@@ -555,7 +565,7 @@ export function makeItemHandlers(c: CollectionConfig) {
         return NextResponse.json({ error: "Item not found" }, { status: 404 });
       }
 
-      await deleteImageFiles(images);
+      await releaseUploads(session.user.id, images.map((img) => img.filename));
       return NextResponse.json({ success: true, deleted });
     } catch (error) {
       console.error(`DELETE /api/${c.label}/[id] error:`, error);
@@ -590,6 +600,10 @@ export function makeItemHandlers(c: CollectionConfig) {
       const validationError = validateBody(body, c, false);
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+      const resolved = await resolveImagePaths(body.image_paths, session.user.id);
+      if ("error" in resolved) {
+        return NextResponse.json({ error: resolved.error }, { status: 400 });
       }
 
       // Build the SET clause. Only include columns that are explicitly
@@ -659,19 +673,19 @@ export function makeItemHandlers(c: CollectionConfig) {
         }
       }
 
-      // Delete removed images (DB rows + files on disk).
+      // Delete removed images (DB rows + the owner's storage objects).
       const imagesToDelete = body.images_to_delete;
       if (Array.isArray(imagesToDelete) && imagesToDelete.length > 0) {
         const deletedImgs = await query<{ filename: string }>(
           `DELETE FROM ${c.imagesTable} WHERE id = ANY($1::uuid[]) AND ${c.imageFkColumn} = $2 RETURNING *`,
           [imagesToDelete, id]
         );
-        await deleteImageFiles(deletedImgs);
+        await releaseUploads(session.user.id, deletedImgs.map((img) => img.filename));
       }
 
       // Append new images, picking up sort_order after the kept set.
-      const newImages = body.image_paths;
-      if (Array.isArray(newImages) && newImages.length > 0) {
+      const newImages = resolved.images;
+      if (newImages.length > 0) {
         const existingCount = await queryOne<{ count: string }>(
           `SELECT COUNT(*) AS count FROM ${c.imagesTable} WHERE ${c.imageFkColumn} = $1`,
           [id]
@@ -682,7 +696,7 @@ export function makeItemHandlers(c: CollectionConfig) {
           : hasExisting
           ? parseInt(existingCount?.count ?? "0")
           : 0;
-        await insertImagePaths(c, id, newImages as ImagePath[], startIndex, hasExisting);
+        await insertImagePaths(c, id, newImages, startIndex, hasExisting);
       }
 
       const fullItem = await queryOne(
@@ -719,8 +733,8 @@ export function makeItemHandlers(c: CollectionConfig) {
 //   - archive: UPDATEs `archived_at = NOW()` for all rows where archived_at IS
 //     NULL (idempotent — re-archiving an already-archived row is a no-op).
 //   - delete: DELETEs the rows. Cascades remove image and valuation rows
-//     automatically (FK ON DELETE CASCADE). Image files in R2/disk are
-//     swept by `deleteImageFiles` after the parent rows are gone.
+//     automatically (FK ON DELETE CASCADE). Image objects in R2/disk are
+//     swept by `releaseUploads` after the parent rows are gone.
 //
 // Authorization is enforced by SQL — every UPDATE/DELETE includes
 // `WHERE id = ANY($ids) AND user_id = $session_user_id`. The returned
@@ -805,7 +819,7 @@ export function makeBulkActionHandler(c: CollectionConfig) {
           RETURNING id`,
         [ids, session.user.id],
       );
-      await deleteImageFiles(images);
+      await releaseUploads(session.user.id, images.map((img) => img.filename));
       return NextResponse.json({ action, affected: deleted.length, ids: deleted.map((r) => r.id) });
     } catch (error) {
       console.error(`POST /api/${c.label}/bulk-action error:`, error);

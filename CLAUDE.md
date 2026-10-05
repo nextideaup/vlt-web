@@ -221,8 +221,16 @@ objects.
 - `lib/db.ts` lazy-inits the `pg.Pool` on first call and **caches it on
   globalThis unconditionally** — see Gotchas. SSL is auto-enabled when
   `NODE_ENV === "production"`.
-- Image upload: client POSTs to `/api/upload` → gets `{path: "/uploads/<uuid>.ext"}`
-  → posts that path with the item create. Storage backend depends on env:
+- Image upload: client POSTs to `/api/upload` → gets `{filename: "<uuid>.ext", path: "/uploads/<uuid>.ext", …}`
+  → posts that entry back in `image_paths` with the item create/PATCH. The
+  server minted the key and recorded it in the `uploads` ledger against the
+  uploader (migration 027, `lib/storage/uploads.ts`, VLT-67): the item handler
+  attaches only keys the caller owns there, takes the path, MIME type, size and
+  moderation verdict from the ledger (whatever the client echoes is ignored),
+  and on delete removes an object only if it is a plain upload key the item's
+  owner uploaded and no other image row still points at it. Never build a
+  storage key or a disk path from a filename a client sent — go through
+  `lib/storage/uploads.ts`. Storage backend depends on env:
   Cloudflare R2 when `R2_*` vars are set (production), local `public/uploads/`
   on disk otherwise (dev). The DB path format is the same in both —
   `/uploads/<filename>.ext` — and the serve route at `/api/uploads/[...path]`
@@ -290,9 +298,11 @@ objects.
   `/api/upload` classifies every buffer before writing to storage: scores
   >= 0.95 are hard-rejected (the file never lands in R2/disk and no row is
   inserted); 0.5–0.95 land as `moderation_status='flagged'`; below 0.5 as
-  `'clean'`. The verdict is returned in the upload response payload and the
-  caller plumbs it into the `*_images` INSERT via `insertImagePaths` in
-  `lib/collection-handler.ts`. The classifier fails open (returns `'flagged'`
+  `'clean'`. The verdict is recorded in the `uploads` ledger with the key, and
+  `insertImagePaths` in `lib/collection-handler.ts` copies it from there onto
+  the `*_images` row; the copy in the upload response is informational only —
+  a client sending back `clean` changes nothing (VLT-67). Images re-stored by
+  the JSON importer land `'unreviewed'`. The classifier fails open (returns `'flagged'`
   with score 0) on model errors so a broken model doesn't block uploads.
   Migration 017 added `moderation_status`, `nsfw_score`, `nsfw_categories`
   to all four image tables; legacy rows default to `'unreviewed'`.

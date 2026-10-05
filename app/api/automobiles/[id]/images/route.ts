@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getApiSession } from "@/lib/api-auth";
 import { query, queryOne } from "@/lib/db";
 import { AutoImage } from "@/lib/types";
 import path from "path";
@@ -18,14 +19,21 @@ const ALLOWED_MIME_TYPES = [
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getApiSession(request);
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
+    // Only the item's owner sees its image rows (VLT-67: they carry the
+    // storage keys).
     const images = await query<AutoImage>(
-      `SELECT * FROM auto_images WHERE auto_id = $1 ORDER BY sort_order ASC, is_primary DESC, created_at ASC`,
-      [id]
+      `SELECT img.* FROM auto_images img
+         JOIN automobiles it ON it.id = img.auto_id
+        WHERE img.auto_id = $1 AND it.user_id = $2
+        ORDER BY img.sort_order ASC, img.is_primary DESC, img.created_at ASC`,
+      [id, session.user.id]
     );
     return NextResponse.json(images);
   } catch (error) {
@@ -39,12 +47,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getApiSession(request);
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
 
-    // Verify parent exists
+    // Verify the parent exists and belongs to the caller (VLT-67).
     const parent = await queryOne<{ id: string }>(
-      `SELECT id FROM automobiles WHERE id = $1`,
-      [id]
+      `SELECT id FROM automobiles WHERE id = $1 AND user_id = $2`,
+      [id, session.user.id]
     );
     if (!parent) {
       return NextResponse.json({ error: "Automobile not found" }, { status: 404 });
