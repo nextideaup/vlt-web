@@ -7,6 +7,8 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname) } },
   test: {
     include: ["**/*.test.ts"],
+    // Migrates the throwaway database once for the DB-backed tests (VLT-68).
+    globalSetup: ["./vitest.globalSetup.ts"],
     exclude: ["node_modules/**", ".next/**"],
   },
 });

@@ -356,7 +356,12 @@ for the API routes. Adding a feature on top of the abstractions:
 
 1. If it's a new column on the item table: add a migration, update the
    `CollectionConfig` in `lib/collections/<module>.ts` (the `fields` array),
-   and add the input to the Add/Edit modal field JSX.
+   and add the input to the Add/Edit modal field JSX. Declare the column's
+   limits on the field — `maxLength` for VARCHAR(n), `precision`/`scale` for
+   NUMERIC(p,s) — so an oversized value is a 400 naming the field rather than
+   a 500 (VLT-68). `lib/collectionLimits.test.ts` compares every declared
+   limit with the live schema and fails on a VARCHAR/NUMERIC(p,s) column that
+   has none.
 2. If it's new behaviour on the route: prefer extending the factory in
    `lib/collection-handler.ts` rather than overriding in the route file.
 3. If it's UI-only: build on `ModalShell`/`ModalActions`/`ImagesEditor` for

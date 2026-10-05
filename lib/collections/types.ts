@@ -23,6 +23,18 @@ export interface FieldSpec {
   // still clear the column, as before.
   // Add other types here as needed.
   type?: "boolean" | "jsonb" | "integer" | "number" | "date";
+  // Column limits (VLT-68), declared here so the validation cannot drift from
+  // the schema (lib/collectionLimits.test.ts compares them with the live
+  // columns). A value over the limit is a 400 naming the field, not a 500 from
+  // Postgres.
+  // maxLength: a VARCHAR(n) column — at most n characters (after trimming, for
+  //   `trim` fields), counted the way Postgres counts them.
+  maxLength?: number;
+  // precision/scale: a NUMERIC(p,s) column — its absolute value, rounded to s
+  //   decimals, must stay below 10^(p-s). More decimals than s are rounded by
+  //   Postgres, as before.
+  precision?: number;
+  scale?: number;
 }
 
 // Module slug used by lib/insurance-valuation.ts MODULE_CATEGORIES and the
@@ -41,6 +53,7 @@ export interface CollectionConfig {
   valuationFkColumn: string; // FK column on the valuations table
   validCategories: readonly string[];
   fields: FieldSpec[];       // body fields for INSERT/UPDATE, in column order
+  imageOriginalNameMaxLength: number; // the images table's original_name VARCHAR(n) (VLT-68)
   conditionRequired: boolean; // true: condition must be set + valid; false: validate only when provided
   patchSetUpdatedAt: boolean; // automobiles + iod set updated_at = NOW() in UPDATE; guitars/watches rely on a trigger
   forceDynamic: boolean;     // automobiles + iod export const dynamic = "force-dynamic"
