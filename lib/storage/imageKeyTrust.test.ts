@@ -86,12 +86,17 @@ const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
 const RUN = randomUUID().slice(0, 8);
 const createdFiles = new Set<string>();
 
-// Never let this suite near a hosted database, whatever DATABASE_URL says.
+// Never let this suite near the app's hosted database, whatever DATABASE_URL
+// says. It runs against a local/LAN Postgres, or against the per-run database
+// the NIU CI runner creates (`ci_<sha>_<suite>_<attempt>`, on the runner's own
+// Railway-hosted throwaway server) — never any other Railway database.
 function isThrowawayDatabase(url: string | undefined): boolean {
   if (!url || process.env.NODE_ENV === "production") return false;
   try {
-    const host = new URL(url).hostname;
-    return !/(\.railway\.internal|\.rlwy\.net|\.railway\.app)$/i.test(host);
+    const u = new URL(url);
+    const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
+    if (/^ci_[0-9a-f]{6,40}(?:_[a-z0-9_]{1,24})?_\d{1,4}$/.test(database)) return true;
+    return !/(\.railway\.internal|\.rlwy\.net|\.railway\.app)$/i.test(u.hostname);
   } catch {
     return false;
   }
