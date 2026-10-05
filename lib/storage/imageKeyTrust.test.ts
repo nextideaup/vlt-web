@@ -16,7 +16,6 @@
 // Needs DATABASE_URL (the NIU `ci` suite provides a fresh one per run). Without
 // it the suite is skipped, never pointed at anything else.
 
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -75,6 +74,7 @@ import { makeBulkActionHandler, makeItemHandlers, makeListHandlers } from "@/lib
 import { autoConfig } from "@/lib/collections/auto";
 import { guitarConfig } from "@/lib/collections/guitar";
 import { query, queryOne } from "@/lib/db";
+import { isThrowawayDatabase } from "@/lib/testing/throwawayDb";
 
 const guitars = makeListHandlers(guitarConfig);
 const guitar = makeItemHandlers(guitarConfig);
@@ -86,21 +86,8 @@ const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
 const RUN = randomUUID().slice(0, 8);
 const createdFiles = new Set<string>();
 
-// Never let this suite near the app's hosted database, whatever DATABASE_URL
-// says. It runs against a local/LAN Postgres, or against the per-run database
-// the NIU CI runner creates (`ci_<sha>_<suite>_<attempt>`, on the runner's own
-// Railway-hosted throwaway server) — never any other Railway database.
-function isThrowawayDatabase(url: string | undefined): boolean {
-  if (!url || process.env.NODE_ENV === "production") return false;
-  try {
-    const u = new URL(url);
-    const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
-    if (/^ci_[0-9a-f]{6,40}(?:_[a-z0-9_]{1,24})?_\d{1,4}$/.test(database)) return true;
-    return !/(\.railway\.internal|\.rlwy\.net|\.railway\.app)$/i.test(u.hostname);
-  } catch {
-    return false;
-  }
-}
+// Never the app's hosted database, whatever DATABASE_URL says
+// (lib/testing/throwawayDb.ts).
 const HAS_DB = isThrowawayDatabase(process.env.DATABASE_URL);
 
 // ── request helpers ──────────────────────────────────────────────────────────
@@ -208,11 +195,7 @@ describe.skipIf(!HAS_DB)("VLT-67: storage keys and moderation verdicts come from
   let mallory: string;
 
   beforeAll(async () => {
-    // The same migration runner the Dockerfile CMD uses on deploy.
-    execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "migrate.js")], {
-      env: process.env,
-      stdio: "pipe",
-    });
+    // Migrations: applied once by vitest.globalSetup.ts.
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     alice = await mkUser("alice");
     mallory = await mkUser("mallory");

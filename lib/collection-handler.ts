@@ -144,6 +144,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 // accept the value. null / undefined / "" are not checked here: they clear the
 // column, exactly as before (normalizeField maps them to SQL NULL).
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INT4_MIN = -2147483648;
 const INT4_MAX = 2147483647;
 const INTEGER_RE = /^[+-]?\d+$/;
@@ -163,10 +164,45 @@ function checkInteger(name: string, v: unknown): string | null {
   return null;
 }
 
-function checkNumber(name: string, v: unknown): string | null {
-  if (typeof v === "number" && Number.isFinite(v)) return null;
-  if (typeof v === "string" && DECIMAL_RE.test(v.trim()) && Number.isFinite(Number(v.trim()))) return null;
-  return `${name} must be a number`;
+function checkNumber(f: FieldSpec, v: unknown): string | null {
+  let n: number;
+  if (typeof v === "number" && Number.isFinite(v)) n = v;
+  else if (typeof v === "string" && DECIMAL_RE.test(v.trim()) && Number.isFinite(Number(v.trim()))) n = Number(v.trim());
+  else return `${f.name} must be a number`;
+  // NUMERIC(p,s): Postgres rounds to s decimals, then refuses anything whose
+  // integer part needs more than p-s digits ("numeric field overflow", a 500
+  // before VLT-68).
+  if (f.precision != null) {
+    const scale = f.scale ?? 0;
+    const limit = 10 ** (f.precision - scale);
+    if (Math.abs(n) >= limit - 0.5 * 10 ** -scale) {
+      return `${f.name} must be less than ${limit.toLocaleString("en-US")}`;
+    }
+  }
+  return null;
+}
+
+// VARCHAR(n): Postgres counts characters (code points), not UTF-16 units.
+function charLength(s: string): number {
+  return Array.from(s).length;
+}
+
+function checkMaxLength(f: FieldSpec, v: unknown): string | null {
+  if (f.maxLength == null || (typeof v !== "string" && typeof v !== "number")) return null;
+  const s = typeof v === "string" && f.trim ? v.trim() : String(v);
+  return charLength(s) > f.maxLength ? `${f.name} must be at most ${f.maxLength} characters` : null;
+}
+
+// Image row ids (images_to_delete, image_order) and item ids (bulk-action
+// ids) are UUID columns: anything else was a Postgres cast error, a 500
+// (VLT-68).
+function checkIdList(name: string, v: unknown, what: string): string | null {
+  if (v == null) return null;
+  if (!Array.isArray(v)) return `${name} must be an array of ${what} ids`;
+  for (let i = 0; i < v.length; i++) {
+    if (typeof v[i] !== "string" || !UUID_RE.test(v[i])) return `${name}[${i}] must be ${what === "image" ? "an image" : "an item"} id`;
+  }
+  return null;
 }
 
 function checkDate(name: string, v: unknown): string | null {
@@ -200,13 +236,13 @@ function checkField(f: FieldSpec, v: unknown): string | null {
     case "integer":
       return v === "" ? null : checkInteger(f.name, v);
     case "number":
-      return v === "" ? null : checkNumber(f.name, v);
+      return v === "" ? null : checkNumber(f, v);
     case "date":
       return v === "" ? null : checkDate(f.name, v);
     case "jsonb":
       return checkSpecs(f.name, v);
     default:
-      return null;
+      return checkMaxLength(f, v);
   }
 }
 
@@ -219,7 +255,7 @@ const MODERATION_STATUSES = ["clean", "flagged", "unreviewed"] as const;
 // The key must be a plain upload key and the path must be the one the server
 // derives from it (VLT-67); whether the caller owns the key is checked next,
 // against the ledger, by resolveImagePaths.
-function checkImagePaths(v: unknown): string | null {
+function checkImagePaths(v: unknown, c: CollectionConfig): string | null {
   if (v == null) return null;
   if (!Array.isArray(v)) return "image_paths must be an array";
   for (let i = 0; i < v.length; i++) {
@@ -231,6 +267,11 @@ function checkImagePaths(v: unknown): string | null {
     if (!isUploadKey(img.filename)) return `${at}.filename is not an uploaded image`;
     if (img.path !== uploadPathFor(img.filename)) return `${at}.path must be ${uploadPathFor(img.filename)}`;
     if (img.original_name != null && typeof img.original_name !== "string") return `${at}.original_name must be a string`;
+    // The images table's VARCHAR limit: over it, the image INSERT failed
+    // AFTER the item row was written — a 500 and an orphan item (VLT-68).
+    if (typeof img.original_name === "string" && charLength(img.original_name) > c.imageOriginalNameMaxLength) {
+      return `${at}.original_name must be at most ${c.imageOriginalNameMaxLength} characters`;
+    }
     if (img.mime_type != null && typeof img.mime_type !== "string") return `${at}.mime_type must be a string`;
     if (img.size != null && !(Number.isSafeInteger(img.size) && (img.size as number) >= 0)) {
       return `${at}.size must be a whole number of bytes`;
@@ -313,7 +354,16 @@ function validateBody(
     }
   }
 
-  return checkImagePaths(body.image_paths);
+  if (!isCreate) {
+    // Checked before the UPDATE, so a bad id no longer leaves the rest of the
+    // PATCH applied (VLT-68).
+    const idError =
+      checkIdList("images_to_delete", body.images_to_delete, "image") ??
+      checkIdList("image_order", body.image_order, "image");
+    if (idError) return idError;
+  }
+
+  return checkImagePaths(body.image_paths, c);
 }
 
 // Every key in `image_paths` must be one /api/upload minted for this user
@@ -321,7 +371,8 @@ function validateBody(
 // leaves no orphan item or half-applied PATCH behind.
 async function resolveImagePaths(
   v: unknown,
-  userId: string
+  userId: string,
+  c: CollectionConfig
 ): Promise<{ images: ResolvedImage[] } | { error: string }> {
   if (!Array.isArray(v) || v.length === 0) return { images: [] };
   const entries = v as ImagePath[];
@@ -330,7 +381,13 @@ async function resolveImagePaths(
   for (let i = 0; i < entries.length; i++) {
     const upload = owned.get(entries[i].filename);
     if (!upload) return { error: `image_paths[${i}] is not an image this account uploaded` };
-    images.push({ key: upload.key, original_name: entries[i].original_name ?? upload.original_name, upload });
+    // A client-sent name was length-checked by checkImagePaths. The fallback is
+    // the uploaded file's own name, which the server recorded; it is clipped
+    // to the column rather than refused, since nobody sent it in this request.
+    const name =
+      entries[i].original_name ??
+      (upload.original_name == null ? null : Array.from(upload.original_name).slice(0, c.imageOriginalNameMaxLength).join(""));
+    images.push({ key: upload.key, original_name: name, upload });
   }
   return { images };
 }
@@ -431,7 +488,7 @@ export function makeListHandlers(c: CollectionConfig) {
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
       }
-      const resolved = await resolveImagePaths(body.image_paths, session.user.id);
+      const resolved = await resolveImagePaths(body.image_paths, session.user.id, c);
       if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: 400 });
       }
@@ -490,8 +547,6 @@ export function makeListHandlers(c: CollectionConfig) {
 // Next 15: dynamic-route params arrive as a Promise; handlers must await
 // before reading the fields.
 type ItemParams = Promise<{ id: string }>;
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function makeItemHandlers(c: CollectionConfig) {
   async function GET(
@@ -601,7 +656,7 @@ export function makeItemHandlers(c: CollectionConfig) {
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
       }
-      const resolved = await resolveImagePaths(body.image_paths, session.user.id);
+      const resolved = await resolveImagePaths(body.image_paths, session.user.id, c);
       if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: 400 });
       }
@@ -751,12 +806,13 @@ export function makeBulkActionHandler(c: CollectionConfig) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      let body: { action?: string; ids?: unknown; value?: unknown };
-      try {
-        body = (await request.json()) as typeof body;
-      } catch {
-        return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+      // A body that is JSON but not an object (null, an array) used to throw
+      // on `body.action` and 500 (VLT-68); same helper as the item routes.
+      const parsed = await readJsonObject(request);
+      if ("error" in parsed) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
       }
+      const body = parsed.body as { action?: string; ids?: unknown; value?: unknown };
 
       const action = body.action as BulkAction | undefined;
       if (action !== "set_insure" && action !== "archive" && action !== "delete") {
@@ -766,10 +822,16 @@ export function makeBulkActionHandler(c: CollectionConfig) {
         );
       }
 
-      const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === "string") : null;
-      if (!ids || ids.length === 0) {
+      if (!Array.isArray(body.ids) || body.ids.length === 0) {
         return NextResponse.json({ error: "ids must be a non-empty string[]" }, { status: 400 });
       }
+      // Every id must be an item id (UUID): a non-UUID string used to reach
+      // the ::uuid[] cast and 500; a non-string was silently dropped (VLT-68).
+      const idError = checkIdList("ids", body.ids, "item");
+      if (idError) {
+        return NextResponse.json({ error: idError }, { status: 400 });
+      }
+      const ids = body.ids as string[];
 
       // Hard ceiling on bulk size — prevents a runaway client from
       // accidentally affecting hundreds of rows. 200 is generous for the
