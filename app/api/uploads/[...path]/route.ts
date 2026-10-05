@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { r2IsConfigured, r2GetPresignedUrl, R2_PRESIGN_TTL_SECONDS } from "@/lib/storage/r2";
+import { isUploadKey } from "@/lib/storage/uploads";
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 
@@ -27,7 +28,16 @@ export async function GET(
   // The browser follows the redirect to r2.cloudflarestorage.com which
   // returns the image directly. Cache the *redirect* for a fraction of the
   // URL's TTL so the browser doesn't re-presign on every <img> miss.
+  //
+  // This route is public (middleware excludes /uploads and /api/uploads:
+  // marketplace listings hand these URLs to eBay/Reverb), so it presigns only
+  // a single plain upload key — the shape /api/upload mints — and never any
+  // other object in the bucket, such as the insurance PDFs under
+  // `paperwork/<user>/…` (VLT-67).
   if (r2IsConfigured()) {
+    if (pathSegments.length !== 1 || !isUploadKey(safeName)) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     try {
       const url = await r2GetPresignedUrl(safeName);
       const redirectCacheSeconds = Math.floor(R2_PRESIGN_TTL_SECONDS / 4);

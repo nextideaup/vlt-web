@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import path from "path";
-import fs from "fs/promises";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { r2IsConfigured, r2PutObject } from "@/lib/storage/r2";
+import { IMAGE_MIME_TYPES } from "@/lib/attach/rules";
+import {
+  forgetUpload,
+  isUploadKey,
+  newUploadKey,
+  ownedUploads,
+  recordUpload,
+  uploadPathFor,
+  writeUploadObject,
+} from "@/lib/storage/uploads";
 
 // ── Valid enum values ─────────────────────────────────────────────────────────
 
@@ -15,7 +22,6 @@ const IOD_CATEGORIES     = ["fine-art", "memorabilia", "collectibles", "jewelry"
 const CONDITIONS         = ["Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"];
 const INSURANCE_SOURCES  = ["ai", "alternate_from_user", "user_override"];
 const VALID_VERSIONS     = ["1.0", "1.1", "1.2", "1.3"] as const;
-const VALID_MOD_STATUSES = ["unreviewed", "clean", "flagged", "approved", "blocked"];
 
 // CUR-9: coerce truthy/falsy values from various export shapes into a clean
 // boolean. Old exports (v1.0) don't have `insure` at all → defaults to false.
@@ -360,43 +366,37 @@ async function insertValuations(
 // Embedded under each item as `images: [...]` by the exporter (v1.2+). Same
 // schema across all four modules; only the table + FK column name differs.
 //
-// Bytes handling:
-//   - If the row carries `data_base64`, decode it and write to R2 (or local
-//     disk in dev). The filename from the export is reused so a roundtrip
-//     within the same bucket is a no-op write; cross-bucket migrations
-//     populate a fresh bucket with the same keys.
-//   - If `data_base64` is absent, the importer inserts the DB row pointing
-//     at the existing filename. This is the metadata-only path — caller is
-//     responsible for ensuring the R2 object exists (same bucket reuse).
+// The file is the client's, so nothing in it names a storage key or a
+// moderation verdict the server will act on (VLT-67):
+//   - A row carrying `data_base64` gets a FRESH key minted here, recorded in
+//     the `uploads` ledger against the importing user. The exported filename
+//     is ignored: reusing it let an import overwrite another user's object, or
+//     write outside the uploads folder on local disk.
+//   - A row without bytes may only point at a key the ledger already records
+//     against the importing user (re-importing your own backup into the same
+//     environment). Anything else is skipped with an error asking for an
+//     export that includes image data.
+//   - `moderation_status` / `nsfw_*` from the file are ignored. A re-stored
+//     image lands 'unreviewed'; a key you already own keeps the verdict the
+//     server recorded when it was uploaded.
 //
 // Idempotent + ownership-enforced like insertValuations: INSERT ... SELECT ...
 // WHERE EXISTS verifies the parent item belongs to the current user;
 // ON CONFLICT (id) DO NOTHING means a re-run is a no-op for already-imported
-// rows. A partial first run resumes cleanly on the second attempt.
-//
-// Failures during the byte write (R2 PUT error, disk full, etc.) skip just
-// that image's row — we'd rather see the item arrive with a degraded image
-// set than fail the whole import.
+// rows. Bytes are written only after the row is in, so a re-run writes nothing
+// new, and a failed write removes the row again rather than leaving one that
+// points at nothing.
 
-async function writeImageBytes(filename: string, buffer: Buffer, mimeType: string | null): Promise<boolean> {
-  try {
-    if (r2IsConfigured()) {
-      await r2PutObject(filename, buffer, mimeType || "application/octet-stream");
-    } else {
-      const uploadsDir = path.join(process.cwd(), "public", "uploads");
-      await fs.mkdir(uploadsDir, { recursive: true });
-      await fs.writeFile(path.join(uploadsDir, filename), buffer);
-    }
-    return true;
-  } catch (err) {
-    console.error(`[import] failed to write bytes for ${filename}:`, err);
-    return false;
+const IMPORT_EXT_MIME: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
+
+// The stored object's type: the row's MIME type if it is one /api/upload
+// accepts, else inferred from the exported filename's extension.
+function importMimeType(r: Record<string, unknown>): string | null {
+  if (typeof r.mime_type === "string" && IMAGE_MIME_TYPES.includes(r.mime_type.toLowerCase())) {
+    return r.mime_type.toLowerCase();
   }
-}
-
-function isValidModerationStatus(v: unknown): string {
-  if (typeof v !== "string") return "unreviewed";
-  return VALID_MOD_STATUSES.includes(v) ? v : "unreviewed";
+  const ext = typeof r.filename === "string" ? r.filename.split(".").pop()?.toLowerCase() : undefined;
+  return (ext && IMPORT_EXT_MIME[ext]) || null;
 }
 
 async function insertImages(
@@ -411,64 +411,114 @@ async function insertImages(
   let inserted = 0;
   let bytesWritten = 0;
   const errors: ValidationError[] = [];
+
+  const owned = await ownedUploads(
+    userId,
+    rows.map((v) => (v && typeof v === "object" ? (v as Record<string, unknown>).filename : null)).filter(isUploadKey),
+  );
+
+  const insertRow = (r: Record<string, unknown>, key: string, meta: {
+    mime_type: string | null;
+    size: number | null;
+    moderation_status: string | null;
+    nsfw_score: number | null;
+    nsfw_categories: unknown;
+  }) =>
+    query<{ id: string }>(
+      `INSERT INTO ${imagesTable}
+         (id, ${fkColumn}, filename, original_name, path, mime_type, size,
+          is_primary, sort_order, created_at,
+          moderation_status, nsfw_score, nsfw_categories)
+       SELECT COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7,
+              $8, $9, COALESCE($10::timestamptz, NOW()),
+              COALESCE($11, 'unreviewed'), $12, $13::jsonb
+       WHERE EXISTS (SELECT 1 FROM ${itemsTable} WHERE id = $2 AND user_id = $14)
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
+      [
+        r.id || null,
+        itemId,
+        key,
+        r.original_name || null,
+        uploadPathFor(key),
+        meta.mime_type,
+        meta.size,
+        toBool(r.is_primary),
+        typeof r.sort_order === "number" ? r.sort_order : 0,
+        r.created_at || null,
+        meta.moderation_status,
+        meta.nsfw_score,
+        meta.nsfw_categories == null ? null : JSON.stringify(meta.nsfw_categories),
+        userId,
+      ],
+    );
+
   for (let i = 0; i < rows.length; i++) {
     const v = rows[i];
     if (!v || typeof v !== "object") continue;
     const r = v as Record<string, unknown>;
 
-    const filename = typeof r.filename === "string" ? r.filename : null;
-    const imgPath = typeof r.path === "string" ? r.path : null;
-    if (!filename || !imgPath) {
-      errors.push({ row: i + 1, field: "image", message: "filename and path required" });
-      continue;
-    }
-
-    // Bytes side: if present, write before the row insert so a failed PUT
-    // surfaces as a skipped image rather than an orphaned row.
     if (typeof r.data_base64 === "string" && r.data_base64.length > 0) {
+      // Bytes present: store them under a key minted here.
+      const mime = importMimeType(r);
+      if (!mime) {
+        errors.push({ row: i + 1, field: "image", message: "not a JPG, PNG, WebP or GIF image" });
+        continue;
+      }
+      const buf = Buffer.from(r.data_base64, "base64");
+      const key = newUploadKey(mime);
       try {
-        const buf = Buffer.from(r.data_base64, "base64");
-        const ok = await writeImageBytes(filename, buf, typeof r.mime_type === "string" ? r.mime_type : null);
-        if (!ok) {
+        await recordUpload({
+          key,
+          userId,
+          origin: "import",
+          originalName: typeof r.original_name === "string" ? r.original_name : null,
+          mimeType: mime,
+          size: buf.length,
+          moderation: null,
+        });
+        const result = await insertRow(r, key, {
+          mime_type: mime,
+          size: buf.length,
+          moderation_status: null,
+          nsfw_score: null,
+          nsfw_categories: null,
+        });
+        if (result.length === 0) {
+          // Duplicate (ON CONFLICT) or parent-not-owned: nothing to store.
+          await forgetUpload(key);
+          continue;
+        }
+        try {
+          await writeUploadObject(key, buf, mime);
+        } catch (err) {
+          console.error(`[import] failed to write bytes for ${key}:`, err);
+          await query(`DELETE FROM ${imagesTable} WHERE id = $1`, [result[0].id]);
+          await forgetUpload(key);
           errors.push({ row: i + 1, field: "image_bytes", message: "failed to write bytes" });
           continue;
         }
+        inserted++;
         bytesWritten++;
       } catch (e) {
-        errors.push({ row: i + 1, field: "image_bytes", message: String(e) });
-        continue;
+        await forgetUpload(key).catch(() => undefined);
+        errors.push({ row: i + 1, field: "image", message: String(e) });
       }
+      continue;
     }
 
+    // No bytes: only a key this user already owns.
+    const upload = owned.get(r.filename as string);
+    if (!upload) {
+      errors.push({
+        row: i + 1,
+        field: "image",
+        message: "has no image data and is not an image this account uploaded; export again with image data included",
+      });
+      continue;
+    }
     try {
-      const result = await query<{ id: string }>(
-        `INSERT INTO ${imagesTable}
-           (id, ${fkColumn}, filename, original_name, path, mime_type, size,
-            is_primary, sort_order, created_at,
-            moderation_status, nsfw_score, nsfw_categories)
-         SELECT COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7,
-                $8, $9, COALESCE($10::timestamptz, NOW()),
-                $11, $12, $13::jsonb
-         WHERE EXISTS (SELECT 1 FROM ${itemsTable} WHERE id = $2 AND user_id = $14)
-         ON CONFLICT (id) DO NOTHING
-         RETURNING id`,
-        [
-          r.id || null,
-          itemId,
-          filename,
-          r.original_name || null,
-          imgPath,
-          r.mime_type || null,
-          toNumber(r.size),
-          toBool(r.is_primary),
-          typeof r.sort_order === "number" ? r.sort_order : 0,
-          r.created_at || null,
-          isValidModerationStatus(r.moderation_status),
-          toNumber(r.nsfw_score),
-          r.nsfw_categories ? JSON.stringify(r.nsfw_categories) : null,
-          userId,
-        ],
-      );
+      const result = await insertRow(r, upload.key, upload);
       if (result.length > 0) inserted++;
       // result.length === 0: duplicate (ON CONFLICT) or parent-not-owned —
       // both ownership-safe, not surfaced as errors.

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
-import { v4 as uuidv4 } from "uuid";
 import { getApiSession } from "@/lib/api-auth";
-import { r2IsConfigured, r2PutObject } from "@/lib/storage/r2";
 import { classifyImage } from "@/lib/moderation/nsfw";
+import {
+  discardUploadObject,
+  newUploadKey,
+  recordUpload,
+  uploadPathFor,
+  writeUploadObject,
+} from "@/lib/storage/uploads";
 import { IMAGE_MAX_BYTES, IMAGE_MIME_TYPES } from "@/lib/attach/rules";
 
 // Shared with the browser's picker/drop/paste rules (lib/attach/rules.ts,
@@ -24,15 +27,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
     }
 
-    // R2 if configured (production / staging), local disk otherwise (dev).
-    // The DB path format stays `/uploads/<filename>.ext` in both modes — the
-    // serving route resolves it: redirect to a presigned R2 URL, or stream
-    // from disk, depending on env.
-    const useR2 = r2IsConfigured();
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    if (!useR2) {
-      await fs.mkdir(uploadsDir, { recursive: true });
-    }
+    // R2 if configured (production / staging), local disk otherwise (dev) —
+    // lib/storage/uploads.ts decides. The DB path format stays
+    // `/uploads/<key>` in both modes; the serving route resolves it.
 
     const uploadedFiles: {
       filename: string;
@@ -40,11 +37,9 @@ export async function POST(request: NextRequest) {
       path: string;
       mime_type: string;
       size: number;
-      // Tier-1 moderation metadata. The caller passes these straight through
-      // to the *_images INSERT (see insertImagePaths in lib/collection-handler.ts).
-      // 'unreviewed' would only appear here if classification failed entirely
-      // — the moderation lib fails open to 'flagged', but a stricter caller
-      // could choose to treat null verdicts as 'unreviewed'.
+      // Tier-1 moderation metadata, for the client to show. The image row's
+      // verdict is NOT taken from what the client sends back: it comes from
+      // the `uploads` ledger row written below (VLT-67).
       moderation_status: "clean" | "flagged";
       nsfw_score: number;
       nsfw_categories: { className: string; probability: number }[];
@@ -65,8 +60,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const filename = `${uuidv4()}.${ext}`;
+      // The key is minted here, extension from the accepted MIME type — never
+      // from the client's file name (VLT-67).
+      const filename = newUploadKey(file.type);
       const buffer = Buffer.from(await file.arrayBuffer());
 
       // Tier-1 content moderation. Classify BEFORE writing to storage so a
@@ -84,22 +80,39 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (useR2) {
-        await r2PutObject(filename, buffer, file.type);
-      } else {
-        await fs.writeFile(path.join(uploadsDir, filename), buffer);
+      // verdict.status is 'clean' | 'flagged' here (hardBlocked already
+      // returned above), so the narrowed type matches the DB column's
+      // CHECK constraint subset.
+      const moderation_status = verdict.status as "clean" | "flagged";
+
+      await writeUploadObject(filename, buffer, file.type);
+      // Record the key against this user, with the server's verdict. Only a
+      // key in this ledger, owned by the caller, can later be attached to an
+      // item (lib/collection-handler.ts) or deleted with one.
+      try {
+        await recordUpload({
+          key: filename,
+          userId: session.user.id,
+          origin: "upload",
+          originalName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          moderation: { moderation_status, nsfw_score: verdict.nsfw_score, nsfw_categories: verdict.categories },
+        });
+      } catch (err) {
+        // No ledger row means no owner: remove the object rather than leave
+        // one nobody can attach or delete.
+        await discardUploadObject(filename);
+        throw err;
       }
 
       uploadedFiles.push({
         filename,
         original_name: file.name,
-        path: `/uploads/${filename}`,
+        path: uploadPathFor(filename),
         mime_type: file.type,
         size: file.size,
-        // verdict.status is 'clean' | 'flagged' here (hardBlocked already
-        // returned above), so the narrowed type matches the DB column's
-        // CHECK constraint subset.
-        moderation_status: verdict.status as "clean" | "flagged",
+        moderation_status,
         nsfw_score: verdict.nsfw_score,
         nsfw_categories: verdict.categories,
       });

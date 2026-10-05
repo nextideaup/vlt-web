@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import path from "path";
-import fs from "fs/promises";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { r2IsConfigured, r2GetObject } from "@/lib/storage/r2";
+import { ownedUploads, readUploadObject } from "@/lib/storage/uploads";
 
 // Embed every item's full valuation history alongside the item so an import
 // re-creates the dashboard's "latest price" and the user's prior AI valuations
@@ -69,15 +67,16 @@ async function withValuations(
 // On byte fetch failure (R2 object missing, disk path missing, etc.) we log
 // and skip the byte payload but still emit the row. A partial export beats
 // a thrown 500 — the importer side handles missing-bytes gracefully.
+//
+// Bytes are read only for keys the `uploads` ledger records against the
+// exporting user (VLT-67). A row's `filename` used to be whatever a client had
+// sent, so reading it as given handed back another user's object, or a file
+// outside the uploads folder, to anyone who planted its name.
 const BYTE_CONCURRENCY = 8;
 
 async function readBytes(filename: string): Promise<Buffer | null> {
   try {
-    if (r2IsConfigured()) {
-      return await r2GetObject(filename);
-    }
-    const fullPath = path.join(process.cwd(), "public", "uploads", filename);
-    return await fs.readFile(fullPath);
+    return await readUploadObject(filename);
   } catch (err) {
     console.warn(`[export] failed to read bytes for ${filename}:`, err);
     return null;
@@ -85,6 +84,7 @@ async function readBytes(filename: string): Promise<Buffer | null> {
 }
 
 async function withImages(
+  userId: string,
   items: Row[],
   imagesTable: string,
   fkColumn: string,
@@ -103,11 +103,13 @@ async function withImages(
   );
 
   if (includeBytes && images.length > 0) {
+    const owned = await ownedUploads(userId, images.map((img) => img.filename));
+    const readable = images.filter((img) => owned.has(img.filename));
     // Concurrent byte fetches with a small cap — avoids hammering R2 with
     // hundreds of parallel GETs on a large export. 8 is well under any
     // reasonable per-account rate limit and keeps wall-clock manageable.
-    for (let i = 0; i < images.length; i += BYTE_CONCURRENCY) {
-      const slice = images.slice(i, i + BYTE_CONCURRENCY);
+    for (let i = 0; i < readable.length; i += BYTE_CONCURRENCY) {
+      const slice = readable.slice(i, i + BYTE_CONCURRENCY);
       await Promise.all(
         slice.map(async (img) => {
           const bytes = await readBytes(img.filename);
@@ -148,7 +150,7 @@ export async function POST(req: NextRequest) {
         [userId],
       );
       const withVals = await withValuations(items, "guitar_valuations", "guitar_item_id");
-      result.guitars = await withImages(withVals, "guitar_images", "guitar_item_id", includeBytes);
+      result.guitars = await withImages(userId, withVals, "guitar_images", "guitar_item_id", includeBytes);
     }
 
     if (collections.includes("watches")) {
@@ -157,7 +159,7 @@ export async function POST(req: NextRequest) {
         [userId],
       );
       const withVals = await withValuations(items, "watch_valuations", "watch_item_id");
-      result.watches = await withImages(withVals, "watch_images", "watch_item_id", includeBytes);
+      result.watches = await withImages(userId, withVals, "watch_images", "watch_item_id", includeBytes);
     }
 
     if (collections.includes("automobiles")) {
@@ -166,7 +168,7 @@ export async function POST(req: NextRequest) {
         [userId],
       );
       const withVals = await withValuations(items, "auto_valuations", "auto_id");
-      result.automobiles = await withImages(withVals, "auto_images", "auto_id", includeBytes);
+      result.automobiles = await withImages(userId, withVals, "auto_images", "auto_id", includeBytes);
     }
 
     if (collections.includes("collectibles")) {
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
         [userId],
       );
       const withVals = await withValuations(items, "iod_valuations", "iod_id");
-      result.collectibles = await withImages(withVals, "iod_images", "iod_id", includeBytes);
+      result.collectibles = await withImages(userId, withVals, "iod_images", "iod_id", includeBytes);
     }
 
     // CUR-9: include insurance_valuation_norms as a top-level export key so

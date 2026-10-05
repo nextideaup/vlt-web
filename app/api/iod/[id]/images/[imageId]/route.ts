@@ -1,38 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getApiSession } from "@/lib/api-auth";
 import { queryOne } from "@/lib/db";
+import { releaseUploads } from "@/lib/storage/uploads";
 import { IoDImage } from "@/lib/types";
-import path from "path";
-import fs from "fs/promises";
 
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string; imageId: string }> }
 ) {
   try {
+    const session = await getApiSession(request);
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id, imageId } = await params;
+    if (!UUID_RE.test(id) || !UUID_RE.test(imageId)) {
+      return NextResponse.json({ error: "Image not found" }, { status: 404 });
+    }
 
+    // The row goes only if its item belongs to the caller (VLT-67).
     const image = await queryOne<IoDImage>(
-      `DELETE FROM iod_images WHERE id = $1 AND iod_id = $2 RETURNING *`,
-      [imageId, id]
+      `DELETE FROM iod_images img
+         USING items_of_distinction it
+        WHERE img.id = $1 AND img.iod_id = $2 AND it.id = img.iod_id AND it.user_id = $3
+        RETURNING img.*`,
+      [imageId, id, session.user.id]
     );
 
     if (!image) {
       return NextResponse.json({ error: "Image not found" }, { status: 404 });
     }
 
-    try {
-      const uploadsDir = path.join(process.cwd(), "public", "uploads", "iod", id);
-      await fs.unlink(path.join(uploadsDir, image.filename));
-    } catch {
-      try {
-        const uploadsDir = path.join(process.cwd(), "public", "uploads");
-        await fs.unlink(path.join(uploadsDir, image.filename));
-      } catch {
-        // File may not exist, ignore
-      }
-    }
+    // The storage object goes only if it is a plain upload key the caller
+    // uploaded and nothing else points at it — never a path built from the
+    // row's filename (VLT-67).
+    await releaseUploads(session.user.id, [image.filename]);
 
     return NextResponse.json({ success: true, deleted: image });
   } catch (error) {
